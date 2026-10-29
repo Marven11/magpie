@@ -112,6 +112,12 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
+/* Wails' macOS Hide orders the window out; WebKit may keep the page marked
+   visible there, so pause its infinite CSS animations until it is shown. */
+html.magpie-out-of-sight,
+html.magpie-out-of-sight *,
+html.magpie-out-of-sight *::before,
+html.magpie-out-of-sight *::after { animation-play-state: paused !important; }
 body {
   font: var(--ui-style, normal) var(--ui-weight, 400) 13px/1.4 var(--ui-font, var(--font)); font-stretch: var(--ui-stretch, 100%);
   color: var(--fg);
