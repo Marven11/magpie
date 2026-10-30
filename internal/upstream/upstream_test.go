@@ -241,6 +241,14 @@ func TestVendorOf(t *testing.T) {
 		{[]string{"https://relay.example.com/v1", "", "https://relay.example.com"}, ""},
 		{[]string{"https://api.anthropic.com.evil.example/v1"}, ""},
 		{[]string{"http://127.0.0.1:11434/v1"}, ""},
+		// an authority is userinfo@host:port: a base URL that carries its
+		// key in it is still the vendor's, and a relay named after the
+		// vendor is not
+		{[]string{"https://user:pass@api.anthropic.com/v1"}, "anthropic"},
+		{[]string{"https://api.openai.com:443@relay.example/v1"}, ""},
+		// RFC 3986 lets a host name end in a dot, the empty root label
+		{[]string{"https://api.anthropic.com./v1"}, "anthropic"},
+		{[]string{"api.anthropic.com"}, "anthropic"},
 	} {
 		if got := VendorOf(c.bases...); got != c.want {
 			t.Errorf("VendorOf(%q) = %q, want %q", c.bases, got, c.want)

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -81,18 +82,20 @@ func VendorOf(bases ...string) string {
 	return ""
 }
 
+// hostOf is the host a base URL's requests go to, as the vendors' own
+// names are written: no userinfo (a base URL may carry its key in it), no
+// port, no path, no trailing dot (RFC 3986 lets a host name end in one),
+// and in lower case.
 func hostOf(u string) string {
 	u = strings.TrimSpace(u)
-	if i := strings.Index(u, "://"); i >= 0 {
-		u = u[i+3:]
+	if !strings.Contains(u, "://") {
+		u = "http://" + u
 	}
-	if i := strings.IndexAny(u, "/?#"); i >= 0 {
-		u = u[:i]
+	p, err := url.Parse(u)
+	if err != nil {
+		return ""
 	}
-	if i := strings.LastIndex(u, ":"); i >= 0 && !strings.Contains(u[i:], "]") {
-		u = u[:i]
-	}
-	return strings.ToLower(u)
+	return strings.TrimSuffix(strings.ToLower(p.Hostname()), ".")
 }
 
 // Status is what a vendor's page says of its API.
