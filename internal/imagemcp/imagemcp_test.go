@@ -398,7 +398,7 @@ func TestGenerateVideoSaysWhyItFailed(t *testing.T) {
 		t.Fatalf("a failed video was saved: %v", files)
 	}
 	c = startVideo(t, &vgw{}, project)
-	r = film(c, map[string]any{"prompt": "REFUSED", "seconds": 99})
+	r = film(c, map[string]any{"prompt": "REFUSED"})
 	if r["isError"] != true || !strings.Contains(text(r), "no video: Duration must be between 1 and 15 seconds") {
 		t.Fatalf("%v", r)
 	}
@@ -423,12 +423,35 @@ func TestGenerateVideoRefusesWhatIsNotAVideo(t *testing.T) {
 	}
 }
 
+// The tool says a length from 1 to 15 (gateway.VideoToolProps's maximum), and
+// the gateway's own generate_video refuses 40 the same way; a length this one
+// lets through goes to /v1/videos as it came, since parseSeconds wants only 1
+// or more, and the user gets whichever words the vendor has for it.
+func TestGenerateVideoRefusesMoreThanFifteenSeconds(t *testing.T) {
+	g := &vgw{}
+	c := startVideo(t, g, t.TempDir())
+	for _, seconds := range []any{99, 99.0, "99", 16, "16"} {
+		r := film(c, map[string]any{"prompt": "x", "seconds": seconds})
+		if r["isError"] != true || !strings.Contains(text(r), "seconds is a whole number from 1 to 15") {
+			t.Errorf("seconds %v: %v", seconds, r)
+		}
+	}
+	if len(g.path) != 0 {
+		t.Fatalf("the gateway was asked anyway: %v", g.path)
+	}
+	if r := film(c, map[string]any{"prompt": "x", "seconds": 15}); r["isError"] == true {
+		t.Errorf("seconds 15: %v", r)
+	}
+}
+
 func TestGenerateVideoChecksItsArguments(t *testing.T) {
 	c := startVideo(t, &vgw{}, t.TempDir())
 	for name, args := range map[string]map[string]any{
 		"no prompt":            {"prompt": "  "},
 		"fractional seconds":   {"prompt": "x", "seconds": 2.5},
 		"zero seconds":         {"prompt": "x", "seconds": 0.0},
+		"too many seconds":     {"prompt": "x", "seconds": 99},
+		"too many as a string": {"prompt": "x", "seconds": "99"},
 		"seconds not a number": {"prompt": "x", "seconds": "a few"},
 		"a missing image":      {"prompt": "x", "image": "nope.png"},
 	} {

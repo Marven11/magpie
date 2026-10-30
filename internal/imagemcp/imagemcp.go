@@ -812,13 +812,16 @@ type filmArgs struct {
 	References []string `json:"reference_images"`
 }
 
-// wholeSeconds is a clip length as an agent may give it: 6, 6.0 or "6".
+// wholeSeconds is a clip length as an agent may give it: 6, 6.0 or "6", and
+// 1 to 15 like the tool says (gateway.VideoToolProps's maximum): the gateway's
+// own generate_video refuses 40 the same way, and a length it doesn't check
+// goes to /v1/videos as it came (parseSeconds wants only 1 or more).
 func wholeSeconds(v any) (int, error) {
 	switch n := v.(type) {
 	case nil:
 		return 0, nil
 	case float64:
-		if n != float64(int(n)) || n < 1 {
+		if n != float64(int(n)) || n < 1 || n > 15 {
 			return 0, fmt.Errorf("seconds is a whole number from 1 to 15, not %v", n)
 		}
 		return int(n), nil
@@ -827,7 +830,7 @@ func wholeSeconds(v any) (int, error) {
 			return 0, nil
 		}
 		i, err := strconv.Atoi(strings.TrimSpace(n))
-		if err != nil || i < 1 {
+		if err != nil || i < 1 || i > 15 {
 			return 0, fmt.Errorf("seconds is a whole number from 1 to 15, not %q", n)
 		}
 		return i, nil
