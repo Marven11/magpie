@@ -35,6 +35,49 @@ type libRow struct {
 // libKinds are what the library can give, by row kind.
 var libKinds = map[string]string{"instructions": "instructions", "mcp": "mcp", "skill": "skills"}
 
+// editorArgs is a command line as $VISUAL and $EDITOR hold it: the program
+// and its arguments, a quoted run being one argument with the quotes taken
+// off, and a backslash escaping the next character where the shell does. A
+// program whose path holds a space is written in quotes —
+// "/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl" -w — which
+// strings.Fields split in the middle, leaving a program name that isn't there.
+func editorArgs(s string) []string {
+	var out []string
+	var cur strings.Builder
+	var quote rune
+	inWord, escaped := false, false
+	for _, r := range s {
+		switch {
+		case escaped:
+			cur.WriteRune(r)
+			escaped, inWord = false, true
+		case quote != 0:
+			if r == quote {
+				quote = 0
+				continue
+			}
+			cur.WriteRune(r)
+		case r == '\\' && runtime.GOOS != "windows":
+			escaped, inWord = true, true
+		case r == '\'' || r == '"':
+			quote, inWord = r, true
+		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
+			if inWord {
+				out = append(out, cur.String())
+				cur.Reset()
+				inWord = false
+			}
+		default:
+			cur.WriteRune(r)
+			inWord = true
+		}
+	}
+	if inWord {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
 func (m *model) reloadLibrary() {
 	m.lib, m.libAgents, m.libErr = nil, nil, ""
 	v, err := library.Read(nil)
@@ -525,8 +568,13 @@ func editInstructions() tea.Cmd {
 			ed = "notepad"
 		}
 	}
-	// the editor may come with flags: code -w
-	words := strings.Fields(ed)
+	// the editor may come with flags (code -w) and its path may hold a space
+	// ("/Applications/Sublime Text.app/…/subl" -w): $VISUAL and $EDITOR are a
+	// command line by convention, so the split has to read the quotes
+	words := editorArgs(ed)
+	if len(words) == 0 {
+		words = []string{"vi"}
+	}
 	c := proc.Command(words[0], append(words[1:], f.Name())...)
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		defer os.Remove(f.Name())
