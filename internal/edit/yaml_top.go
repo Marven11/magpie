@@ -85,7 +85,29 @@ func DelYAMLTop(path string, keys ...string) error {
 		return nil
 	}
 	out = append(out, lines[at:]...)
-	return writeYAMLTop(path, out)
+	return writeYAMLTop(path, yamlDropLoneEnd(out))
+}
+
+// yamlDropLoneEnd removes a document end marker that would be a file's whole
+// content: "..." with no document before it is not YAML — yaml.v3 reads it as
+// "expected the node content, but found '<document end>'" — so writing it back
+// failed the parse check and left the file as it was.
+func yamlDropLoneEnd(lines []string) []string {
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if trimmed != "..." && !strings.HasPrefix(trimmed, "... ") && !strings.HasPrefix(trimmed, "...\t") {
+			return lines
+		}
+		out := append([]string{}, lines[:i]...)
+		if rest := strings.TrimSpace(trimmed[3:]); rest != "" {
+			out = append(out, rest)
+		}
+		return append(out, lines[i+1:]...)
+	}
+	return lines
 }
 
 var yamlPlain = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)

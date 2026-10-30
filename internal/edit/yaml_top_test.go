@@ -138,3 +138,39 @@ func TestYAMLTopValidatesBeforeWriting(t *testing.T) {
 		})
 	}
 }
+
+// Deleting a file's last top-level entry leaves a document end marker with no
+// document before it, which yaml.v3 refuses ("expected the node content, but
+// found '<document end>'") and so left the whole file as it was: the marker
+// goes with the entry, and the comments stay.
+func TestYAMLTopDelLastEntryBeforeDocumentEnd(t *testing.T) {
+	for name, in := range map[string]string{
+		"document end":              "model: old\n...\n",
+		"a comment after the end":   "# head\nmodel: old\n...\n# the end\n",
+		"a comment on the end line": "model: old\n... # the end\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := tmpFile(t, "config.yaml", in)
+			if err := DelYAMLTop(p, "model"); err != nil {
+				t.Fatal(err)
+			}
+			if got := read(t, p); strings.Contains(got, "...") {
+				t.Fatalf("document end marker kept: %q", got)
+			}
+			if v, ok := GetYAMLTop(p, "model"); ok {
+				t.Fatalf("model still there: %q", v)
+			}
+			if strings.Contains(in, "# the end") && !strings.Contains(read(t, p), "# the end") {
+				t.Fatalf("the comment went with the entry: %q", read(t, p))
+			}
+		})
+	}
+	// A file that keeps an entry keeps its marker.
+	p := tmpFile(t, "config.yaml", "model: old\nother: x\n...\n")
+	if err := DelYAMLTop(p, "model"); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, p); got != "other: x\n...\n" {
+		t.Fatalf("file = %q", got)
+	}
+}
