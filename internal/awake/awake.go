@@ -66,7 +66,7 @@ func Keep(ctx context.Context, level func() Level, state func() State) {
 			release()
 			release = nil
 			held = Off
-			log.Print("awake: the agents are idle; the computer may sleep again")
+			log.Print("awake: what held sleep off is released; the computer may sleep again")
 		}
 	}
 	defer let()
