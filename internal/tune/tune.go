@@ -78,8 +78,20 @@ type Weights struct {
 // WeightsFor is the weights of the vendor of a model: Anthropic charges a
 // quarter more to write its cache (twice for an hour's) and a tenth to
 // read it; OpenAI writes it at the input's price and reads it at a tenth.
+//
+// A model named in an agent's list is a provider's and a model's, magpie's
+// own when Codex is the agent ("p1/claude-opus-5", "magpie/p1/claude-opus-5",
+// "group/auto-claude-opus-5"): the vendor is the model's own name, which is
+// the last part, not the string's first letters — read as it was, every
+// Claude model an agent reached through magpie was priced as OpenAI's.
 func WeightsFor(model string) Weights {
-	if strings.HasPrefix(model, "claude") {
+	m := strings.ToLower(model)
+	if i := strings.LastIndex(m, "/"); i >= 0 {
+		m = m[i+1:]
+	}
+	// an auto group's id is "auto-" and the model it picks
+	m = strings.TrimPrefix(m, "auto-")
+	if strings.HasPrefix(m, "claude") {
 		return Weights{Read: 0.1, Write: 1.25, Write1h: 2, Out: 5}
 	}
 	return Weights{Read: 0.1, Write: 1, Write1h: 1, Out: 8}
