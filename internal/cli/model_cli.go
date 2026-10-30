@@ -962,6 +962,9 @@ func modelContext(args []string) error {
 		fmt.Println(green.Render("✓"), id, muted.Render("has no window of your own · magpie model context "+typedRef(id)+" says what it takes now"))
 		return nil
 	}
+	if len(rest) > 1 {
+		return fmt.Errorf("magpie model context %s <tokens>, one value, not %q", typedRef(id), rest[1])
+	}
 	n, err := parseTokens(rest[0])
 	if err != nil {
 		return fmt.Errorf("a window is a number of tokens, like 200000 or 1m, not %q", rest[0])
@@ -1064,6 +1067,9 @@ func modelOutput(args []string) error {
 			fmt.Println(faint.Render("  · what the vendor's list and models.dev say · magpie model output " + typedRef(id) + " <tokens> to change it"))
 		}
 		return nil
+	}
+	if len(rest) > 1 {
+		return fmt.Errorf("magpie model output %s <tokens>, one value, not %q", typedRef(id), rest[1])
 	}
 	n, err := parseTokens(rest[0])
 	if err != nil {
