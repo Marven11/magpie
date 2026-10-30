@@ -130,9 +130,18 @@ func setJSONBytes(raw []byte, keyPath string, value any) ([]byte, error) {
 		if !r.Exists() {
 			continue
 		}
-		if i == len(parts) || !r.IsObject() {
-			// Exact key exists (replace value), or an ancestor exists but is a
-			// scalar (replace it with the nested object we need).
+		if i == len(parts) {
+			// the key exists: its value is replaced
+			return splice(raw, r.Index, len(r.Raw), marshalAt(raw, r.Index, nest(parts[i:], value)))
+		}
+		if r.IsArray() {
+			// a list isn't a mapping to put a key in: replacing it would
+			// throw away what it holds, which is the user's
+			return nil, fmt.Errorf("%s: %q is a list, not an object", keyPath, strings.Join(parts[:i], "."))
+		}
+		if !r.IsObject() {
+			// an ancestor that is a scalar is replaced with the nested object
+			// we need
 			return splice(raw, r.Index, len(r.Raw), marshalAt(raw, r.Index, nest(parts[i:], value)))
 		}
 		return insertKey(raw, stripped, r.Index, unescapeKey(parts[i]), nest(parts[i+1:], value))
@@ -323,6 +332,27 @@ func pastLineEnd(raw []byte, i int) int {
 	return i
 }
 
+// keyStart is where the member name ending at close begins: close is the
+// member's closing quote, and a quote inside the name — one a name holding a
+// " has — doesn't end it. A quote preceded by an odd run of backslashes is
+// escaped, so the scan steps over it instead of taking it for the opening one
+// (a name of a"b taken for its own start deleted the member beside it).
+func keyStart(s []byte, close int) (int, bool) {
+	for i := close - 1; i >= 0; i-- {
+		if s[i] != '"' {
+			continue
+		}
+		n := 0
+		for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
+			n++
+		}
+		if n%2 == 0 {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
 func delJSONBytes(raw []byte, keyPath string) ([]byte, bool, error) {
 	stripped := jsonc.ToJSONInPlace(append([]byte(nil), raw...))
 	if !json.Valid(stripped) {
@@ -341,10 +371,11 @@ func delJSONBytes(raw []byte, keyPath string) ([]byte, bool, error) {
 		return nil, false, fmt.Errorf("cannot locate key %q", keyPath)
 	}
 	a-- // closing quote of the key
-	for a > 0 && stripped[a-1] != '"' {
-		a--
+	open, ok := keyStart(stripped, a-1)
+	if !ok {
+		return nil, false, fmt.Errorf("cannot locate key %q", keyPath)
 	}
-	a-- // opening quote
+	a = open
 	b := r.Index + len(r.Raw)
 
 	ws := func(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }

@@ -2,8 +2,32 @@ package edit
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
+
+// A member name may hold a quote of its own ("a\"b"), and the scan back to
+// its opening quote stopped at the escaped one: the removal began inside the
+// name and left valid JSON with another member gone, which checkJSONC passed
+// and the file was written that way.
+func TestDelJSONKeyWithAQuote(t *testing.T) {
+	in := `{"a\"b":1,"c":2}`
+	p := tmpFile(t, "s.json", in)
+	if err := DelJSON(p, `a"b`); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, p); got != `{"c":2}` {
+		t.Fatalf("got %q, want %q", got, `{"c":2}`)
+	}
+	// and among others, in the pretty form an editor writes
+	p = tmpFile(t, "s.json", "{\n  \"a\\\"b\": 1,\n  \"c\": 2\n}\n")
+	if err := DelJSON(p, `a"b`); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, p); !strings.Contains(got, `"c": 2`) || strings.Contains(got, `a\"`) {
+		t.Fatalf("got\n%s", got)
+	}
+}
 
 func TestDelJSONMiddleKeepsLayout(t *testing.T) {
 	in := "{\n  \"env\": {\n    \"A\": \"1\",\n    \"B\": \"2\",\n    \"C\": \"3\"\n  },\n  \"model\": \"m\"\n}\n"
