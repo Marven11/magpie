@@ -2,13 +2,109 @@ package davsync
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
+
+// A write is made over the version read, whichever the server tells one by
+// (remote.put): an ETag with If-Match, a Last-Modified alone with
+// If-Unmodified-Since, and a file that isn't there yet with If-None-Match
+// "*" — a write with no condition is the one that goes over another
+// computer's.
+func TestDAVPutHoldsToTheVersionRead(t *testing.T) {
+	var mu sync.Mutex
+	file := []byte(nil)
+	mtime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	conds := []map[string]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.Method {
+		case http.MethodGet:
+			if file == nil {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			// no ETag: the version is the Last-Modified alone
+			w.Header().Set("Date", mtime.Add(time.Hour).Format(http.TimeFormat))
+			w.Header().Set("Last-Modified", mtime.Format(http.TimeFormat))
+			w.Write(file)
+		case http.MethodPut:
+			c := map[string]string{}
+			for _, h := range []string{"If-Match", "If-Unmodified-Since", "If-None-Match"} {
+				if v := r.Header.Get(h); v != "" {
+					c[h] = v
+				}
+			}
+			conds = append(conds, c)
+			if v, ok := c["If-None-Match"]; ok && v == "*" && file != nil {
+				w.WriteHeader(http.StatusPreconditionFailed)
+				return
+			}
+			if v, ok := c["If-Unmodified-Since"]; ok {
+				t0, err := http.ParseTime(v)
+				if err != nil || mtime.After(t0) {
+					w.WriteHeader(http.StatusPreconditionFailed)
+					return
+				}
+			}
+			b, _ := io.ReadAll(r.Body)
+			file, mtime = b, mtime.Add(time.Second)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+	d, err := newDAV(Config{URL: srv.URL + "/magpie", User: "me", Password: "pw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	// nothing there yet: the write asks for a file that isn't there
+	if _, err := d.put(ctx, []byte("first"), version{}); err != nil {
+		t.Fatalf("the first write: %v", err)
+	}
+	if len(conds) != 1 || conds[0]["If-None-Match"] != "*" || len(conds[0]) != 1 {
+		t.Fatalf("the first write went with %v, want If-None-Match: * alone", conds)
+	}
+
+	// the file is there, and the read gave only a Last-Modified: the write
+	// holds to that
+	_, v, err := d.get(ctx, version{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.ETag != "" || v.Modified == "" {
+		t.Fatalf("the version read: %+v, want a Last-Modified alone", v)
+	}
+	if _, err := d.put(ctx, []byte("second"), v); err != nil {
+		t.Fatalf("the write over it: %v", err)
+	}
+	if len(conds) != 2 || conds[1]["If-Unmodified-Since"] != v.Modified || len(conds[1]) != 1 {
+		t.Fatalf("the write went with %v, want If-Unmodified-Since: %s alone", conds, v.Modified)
+	}
+
+	// another computer writes, and this one's write over the version it
+	// read is refused instead of going over it
+	if _, err := d.put(ctx, []byte("another computer's"), version{}); !errors.Is(err, errChanged) {
+		t.Fatalf("a write where the file is: %v, want errChanged", err)
+	}
+	if _, err := d.put(ctx, []byte("stale"), v); !errors.Is(err, errChanged) {
+		t.Fatalf("a write over the version read before it changed: %v, want errChanged", err)
+	}
+	if string(file) != "second" {
+		t.Fatalf("the server holds %q", file)
+	}
+}
 
 // A 403 is told apart: a folder in the address that isn't on the server, one
 // the account may only read, and a server that won't say — not all of them a
@@ -45,7 +141,7 @@ func TestDAVForbidden(t *testing.T) {
 		}
 		_, _, err = d.get(ctx, version{})
 		if err == nil {
-			_, err = d.put(ctx, []byte("x"), "")
+			_, err = d.put(ctx, []byte("x"), version{})
 		}
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v, want %q", c.dir, err, c.want)
@@ -78,7 +174,7 @@ func TestDAVStorageRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = d.put(context.Background(), []byte("x"), "")
+	_, err = d.put(context.Background(), []byte("x"), version{})
 	if err == nil || !strings.Contains(err.Error(), "(local, aliyun), like "+srv.URL+"/dav/local") {
 		t.Fatalf("%v", err)
 	}
@@ -125,7 +221,7 @@ func TestDAVForbiddenUntilMade(t *testing.T) {
 	if data, _, err := d.get(ctx, version{}); err != nil || data != nil {
 		t.Fatalf("before the first sync: %q %v", data, err)
 	}
-	if _, err := d.put(ctx, []byte("x"), ""); err != nil {
+	if _, err := d.put(ctx, []byte("x"), version{}); err != nil {
 		t.Fatal(err)
 	}
 	if data, _, err := d.get(ctx, version{}); err != nil || string(data) != "x" {
@@ -214,7 +310,7 @@ func TestDAVShortWrite(t *testing.T) {
 	// the write after a cut one is kept whole, so the sync goes through,
 	// and the server ends with the file in full
 	d, writes := cut(1, true, false)
-	if _, err := d.put(ctx, data, ""); err != nil {
+	if _, err := d.put(ctx, data, version{}); err != nil {
 		t.Fatalf("the write after a short one: %v", err)
 	}
 	if *writes != 2 {
@@ -227,7 +323,7 @@ func TestDAVShortWrite(t *testing.T) {
 	// the same over a version read before: the short write changed it, so
 	// the retry matches what the short write left, not that one
 	d, writes = cut(2, true, false)
-	if _, err := d.put(ctx, data, ""); err != nil {
+	if _, err := d.put(ctx, data, version{}); err != nil {
 		t.Fatalf("the seed write: %v", err)
 	}
 	_, v, err := d.get(ctx, version{})
@@ -237,7 +333,7 @@ func TestDAVShortWrite(t *testing.T) {
 	if v.ETag == "" {
 		t.Fatal("no ETag to write over")
 	}
-	if _, err := d.put(ctx, data, v.ETag); err != nil {
+	if _, err := d.put(ctx, data, v); err != nil {
 		t.Fatalf("over a version read: %v", err)
 	}
 	if *writes != 3 {
@@ -250,7 +346,7 @@ func TestDAVShortWrite(t *testing.T) {
 	// a server that keeps cutting: three tries, then the error says what
 	// was kept
 	d, writes = cut(-1, true, false)
-	_, err = d.put(ctx, data, "")
+	_, err = d.put(ctx, data, version{})
 	if err == nil || !strings.Contains(err.Error(), "cut short") || !strings.Contains(err.Error(), "4096 of 8192") {
 		t.Fatalf("always short: %v, want a kept-of-sent count", err)
 	}
@@ -261,7 +357,7 @@ func TestDAVShortWrite(t *testing.T) {
 	// a HEAD that can't be done (here 503) leaves the write unchecked:
 	// it landed, and it isn't failed over the check
 	d, writes = cut(0, true, true)
-	if _, err := d.put(ctx, data, ""); err != nil {
+	if _, err := d.put(ctx, data, version{}); err != nil {
 		t.Fatalf("a write the HEAD couldn't be done for: %v", err)
 	}
 	if *writes != 1 {

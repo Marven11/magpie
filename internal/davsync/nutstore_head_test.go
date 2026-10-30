@@ -170,7 +170,7 @@ func TestNutstoreBackupWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := bytes.Repeat([]byte("x"), 6869)
-	v, err := d.put(context.Background(), data, "")
+	v, err := d.put(context.Background(), data, version{})
 	if err != nil {
 		t.Fatalf("put: %v", err)
 	}

@@ -183,7 +183,7 @@ func TestSlowTransferIsNotCutShort(t *testing.T) {
 	data := bytes.Repeat([]byte("magpie skill "), (2<<20)/13)
 	ctx := context.Background()
 	start := time.Now()
-	if _, err := d.put(ctx, data, ""); err != nil {
+	if _, err := d.put(ctx, data, version{}); err != nil {
 		t.Fatalf("slow upload: %v", err)
 	}
 	up := time.Since(start)
@@ -226,7 +226,7 @@ func TestStalledTransferFailsPromptly(t *testing.T) {
 			defer cancel()
 			start := time.Now()
 			if way == "up" {
-				_, err = d.put(ctx, data, "")
+				_, err = d.put(ctx, data, version{})
 			} else {
 				_, _, err = d.get(ctx, version{})
 			}

@@ -56,6 +56,32 @@ func (v version) conditions() map[string]string {
 	return nil
 }
 
+// setWriteCondition asks the server to take the write only over v (RFC 9110):
+// If-Match for an ETag, If-Unmodified-Since for a Last-Modified alone, and
+// If-None-Match "*" for a file that isn't there yet. remote.put's contract is
+// this condition — without one, a server that tells only Last-Modified lost
+// one computer's write to another's, and two computers' first writes to one
+// empty file both won.
+func setWriteCondition(h map[string]string, v version) {
+	clearWriteCondition(h)
+	switch {
+	case v.ETag != "":
+		h["If-Match"] = v.ETag
+	case v.Modified != "":
+		h["If-Unmodified-Since"] = v.Modified
+	default:
+		h["If-None-Match"] = "*"
+	}
+}
+
+// clearWriteCondition takes a write's condition off h, for a write that has
+// no version left to hold to.
+func clearWriteCondition(h map[string]string) {
+	for _, k := range []string{"If-Match", "If-Unmodified-Since", "If-None-Match"} {
+		delete(h, k)
+	}
+}
+
 // versionOf is the version an answer's headers tell; none when they tell
 // nothing that can be asked about again.
 func versionOf(h http.Header) version {
@@ -118,10 +144,10 @@ type remote interface {
 	// there is none yet. With have, the version last read, it is asked
 	// for only if it changed since: errNotModified when it didn't.
 	get(ctx context.Context, have version) (data []byte, v version, err error)
-	// put writes it over the version read (etag) — with none, only where
-	// there is none yet — and errChanged when another computer wrote in
-	// between. The version written is the one the server says, if it does.
-	put(ctx context.Context, data []byte, etag string) (version, error)
+	// put writes it over the version read — with none, only where there
+	// is none yet — and errChanged when another computer wrote in between.
+	// The version written is the one the server says, if it does.
+	put(ctx context.Context, data []byte, have version) (version, error)
 }
 
 // newRemote selects the backend from c's address.
@@ -311,16 +337,18 @@ func (d *dav) get(ctx context.Context, have version) (data []byte, v version, er
 	return data, versionOf(res.Header), nil
 }
 
-// put writes the backup, only over the version read (etag) when there was
-// one, making the folder if the server has none. Relays and tunnels cut
+// put writes the backup, only over the version read when there was one,
+// making the folder if the server has none. Relays and tunnels cut
 // long writes short, and the half that lands reads back as "not a magpie
 // backup" on every sync after, so what a write kept is read back and
 // compared; a short write is tried again and told as itself in the end.
-func (d *dav) put(ctx context.Context, data []byte, etag string) (version, error) {
+func (d *dav) put(ctx context.Context, data []byte, have version) (version, error) {
 	h := map[string]string{"Content-Type": "application/octet-stream"}
-	if etag != "" {
-		h["If-Match"] = etag
-	}
+	// the write holds over the version read, whichever the server tells
+	// one by: an ETag as it is, a Last-Modified alone until that second
+	// has passed, and no file yet as "only here" — a server that tells
+	// no ETag still lost one computer's first write to the other's
+	setWriteCondition(h, have)
 	for try, writes := 0, 0; ; try++ {
 		res, err := d.send(ctx, http.MethodPut, d.url(folder, file), data, h)
 		if err != nil {
@@ -338,11 +366,12 @@ func (d *dav) put(ctx context.Context, data []byte, etag string) (version, error
 					// check read; with neither, the old one goes, for it
 					// can't hold any more
 					if e := res.Header.Get("ETag"); e != "" {
-						h["If-Match"] = e
+						setWriteCondition(h, version{ETag: e})
 					} else if he != "" {
-						h["If-Match"] = he
+						setWriteCondition(h, version{ETag: he})
 					} else {
-						delete(h, "If-Match")
+						// the old one goes, for it can't hold any more
+						clearWriteCondition(h)
 					}
 					continue
 				}

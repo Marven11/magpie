@@ -178,13 +178,13 @@ func TestS3Put(t *testing.T) {
 	if data, v, err := s.get(ctx, version{}); data != nil || v.ETag != "" || err != nil {
 		t.Fatalf("nothing there: %q %q %v", data, v.ETag, err)
 	}
-	if _, err := s.put(ctx, []byte("one"), ""); err != nil {
+	if _, err := s.put(ctx, []byte("one"), version{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := string(f.objects["team x+y/magpie/magpie.magpie-backup"]); got != "one" {
 		t.Fatalf("stored %q", got)
 	}
-	if _, err := s.put(ctx, []byte("another first"), ""); !errors.Is(err, errChanged) {
+	if _, err := s.put(ctx, []byte("another first"), version{}); !errors.Is(err, errChanged) {
 		t.Fatalf("a first write over one there: %v", err)
 	}
 	data, v, err := s.get(ctx, version{})
@@ -192,10 +192,10 @@ func TestS3Put(t *testing.T) {
 	if string(data) != "one" || etag == "" || err != nil {
 		t.Fatalf("read: %q %q %v", data, etag, err)
 	}
-	if _, err := s.put(ctx, []byte("two"), etag); err != nil {
+	if _, err := s.put(ctx, []byte("two"), version{ETag: etag}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.put(ctx, []byte("three"), etag); !errors.Is(err, errChanged) {
+	if _, err := s.put(ctx, []byte("three"), version{ETag: etag}); !errors.Is(err, errChanged) {
 		t.Fatalf("a write over a version since changed: %v", err)
 	}
 	if got := string(f.objects["team x+y/magpie/magpie.magpie-backup"]); got != "two" {
@@ -235,10 +235,10 @@ func TestS3NoConditions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.put(ctx, []byte("one"), ""); err != nil {
+	if _, err := s.put(ctx, []byte("one"), version{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.put(ctx, []byte("another first"), ""); !errors.Is(err, errChanged) {
+	if _, err := s.put(ctx, []byte("another first"), version{}); !errors.Is(err, errChanged) {
 		t.Fatalf("a first write over one there: %v", err)
 	}
 	_, v, _ := s.get(ctx, version{})
@@ -246,12 +246,12 @@ func TestS3NoConditions(t *testing.T) {
 	f.mu.Lock()
 	f.store("team x+y/magpie/magpie.magpie-backup", []byte("theirs"))
 	f.mu.Unlock()
-	if _, err := s.put(ctx, []byte("two"), etag); !errors.Is(err, errChanged) {
+	if _, err := s.put(ctx, []byte("two"), version{ETag: etag}); !errors.Is(err, errChanged) {
 		t.Fatalf("a write over another computer's: %v", err)
 	}
 	_, v, _ = s.get(ctx, version{})
 	etag = v.ETag
-	if _, err := s.put(ctx, []byte("two"), etag); err != nil {
+	if _, err := s.put(ctx, []byte("two"), version{ETag: etag}); err != nil {
 		t.Fatal(err)
 	}
 	if got := string(f.objects["team x+y/magpie/magpie.magpie-backup"]); got != "two" {
@@ -528,10 +528,10 @@ func TestS3Live(t *testing.T) {
 	if data, _, err := s.get(ctx, version{}); data != nil || err != nil {
 		t.Fatalf("nothing there: %q %v", data, err)
 	}
-	if _, err := s.put(ctx, []byte("one"), ""); err != nil {
+	if _, err := s.put(ctx, []byte("one"), version{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.put(ctx, []byte("another first"), ""); !errors.Is(err, errChanged) {
+	if _, err := s.put(ctx, []byte("another first"), version{}); !errors.Is(err, errChanged) {
 		t.Fatalf("a first write over one there: %v", err)
 	}
 	data, v, err := s.get(ctx, version{})
@@ -539,10 +539,10 @@ func TestS3Live(t *testing.T) {
 	if string(data) != "one" || etag == "" || err != nil {
 		t.Fatalf("read: %q %q %v", data, etag, err)
 	}
-	if _, err := s.put(ctx, []byte("two"), etag); err != nil {
+	if _, err := s.put(ctx, []byte("two"), version{ETag: etag}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.put(ctx, []byte("three"), etag); !errors.Is(err, errChanged) {
+	if _, err := s.put(ctx, []byte("three"), version{ETag: etag}); !errors.Is(err, errChanged) {
 		t.Fatalf("a write over a version since changed: %v", err)
 	}
 	if data, _, _ := s.get(ctx, version{}); string(data) != "two" {

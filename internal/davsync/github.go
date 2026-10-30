@@ -677,8 +677,8 @@ func (g *github) contents(ctx context.Context, name string, data []byte, sha str
 	return version{ETag: out.Content.SHA}, nil
 }
 
-func (g *github) put(ctx context.Context, data []byte, sha string) (version, error) {
-	return g.commit(ctx, file, data, sha, false)
+func (g *github) put(ctx context.Context, data []byte, have version) (version, error) {
+	return g.commit(ctx, file, data, have.ETag, false)
 }
 
 func (g *github) list(ctx context.Context) (map[string]string, error) {

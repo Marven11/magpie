@@ -467,7 +467,7 @@ func TestGitHubRemote(t *testing.T) {
 		t.Fatalf("empty repository folder: %q %v", b, err)
 	}
 	first := []byte("sealed fixture")
-	v, err := g.put(ctx, first, "")
+	v, err := g.put(ctx, first, version{})
 	if err != nil || v.ETag != githubSHA(first) {
 		t.Fatalf("create: %+v %v", v, err)
 	}
@@ -477,14 +477,14 @@ func TestGitHubRemote(t *testing.T) {
 	if _, _, err := g.get(ctx, v); !errors.Is(err, errNotModified) {
 		t.Fatalf("unchanged: %v", err)
 	}
-	if _, err := g.put(ctx, []byte("racing creation"), ""); !errors.Is(err, errChanged) {
+	if _, err := g.put(ctx, []byte("racing creation"), version{}); !errors.Is(err, errChanged) {
 		t.Fatalf("another computer created it: %v", err)
 	}
-	if _, err := g.put(ctx, []byte("stale"), "old-sha"); !errors.Is(err, errChanged) {
+	if _, err := g.put(ctx, []byte("stale"), version{ETag: "old-sha"}); !errors.Is(err, errChanged) {
 		t.Fatalf("another computer updated it: %v", err)
 	}
 	large := []byte(strings.Repeat("encrypted", 140000))
-	v, err = g.put(ctx, large, v.ETag)
+	v, err = g.put(ctx, large, v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -652,7 +652,7 @@ func TestGitHubEmptyRepositoryFailures(t *testing.T) {
 		f.empty = false
 		f.objects["main|team/magpie/"+file] = other
 		f.mu.Unlock()
-		if _, err := g.put(ctx, []byte("this computer's sealed backup"), ""); !errors.Is(err, errChanged) {
+		if _, err := g.put(ctx, []byte("this computer's sealed backup"), version{}); !errors.Is(err, errChanged) {
 			t.Fatalf("a racing initial commit must require the normal merge: %v", err)
 		}
 		if f.writes != 0 || string(f.objects["main|team/magpie/"+file]) != string(other) {
@@ -747,7 +747,7 @@ func TestGitHubFailures(t *testing.T) {
 		f.mu.Lock()
 		f.status, f.message = 422, "Protected branch update failed: changes must be made through a pull request"
 		f.mu.Unlock()
-		_, err := g.put(context.Background(), []byte("encrypted fixture"), "")
+		_, err := g.put(context.Background(), []byte("encrypted fixture"), version{})
 		if err == nil || errors.Is(err, errChanged) || !strings.Contains(err.Error(), "Protected branch") {
 			t.Fatalf("repository rules treated as a racing file creation: %v", err)
 		}
@@ -794,7 +794,7 @@ func TestGitHubLargeBackup(t *testing.T) {
 	}
 	ctx := context.Background()
 	small := []byte("an earlier sealed backup")
-	v, err := g.put(ctx, small, "")
+	v, err := g.put(ctx, small, version{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -803,7 +803,7 @@ func TestGitHubLargeBackup(t *testing.T) {
 		large[i] = byte(i*7919 + i>>11)
 	}
 	before := f.writes
-	v, err = g.put(ctx, large, v.ETag)
+	v, err = g.put(ctx, large, v)
 	if err != nil {
 		t.Fatalf("a 15 MB backup: %v", err)
 	}
@@ -825,7 +825,7 @@ func TestGitHubLargeBackup(t *testing.T) {
 			t.Fatalf("a repository with commits was written through the Contents API: %s", r)
 		}
 	}
-	if _, err := g.put(ctx, small, "old-sha"); !errors.Is(err, errChanged) || !bytesEqual(f.objects["main|team/magpie/"+file], large) {
+	if _, err := g.put(ctx, small, version{ETag: "old-sha"}); !errors.Is(err, errChanged) || !bytesEqual(f.objects["main|team/magpie/"+file], large) {
 		t.Fatalf("a stale version must not replace the backup: %v", err)
 	}
 }
@@ -842,7 +842,7 @@ func TestGitHubBranchMovedMeanwhile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		v, err := g.put(context.Background(), []byte("first"), "")
+		v, err := g.put(context.Background(), []byte("first"), version{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -855,7 +855,7 @@ func TestGitHubBranchMovedMeanwhile(t *testing.T) {
 			f.objects["main|team/magpie/usage/other.magpie-usage"] = []byte("other computer")
 			f.advance("main")
 		}
-		if _, err := g.put(context.Background(), []byte("second"), v.ETag); err != nil {
+		if _, err := g.put(context.Background(), []byte("second"), v); err != nil {
 			t.Fatal(err)
 		}
 		if string(f.objects["main|team/magpie/"+file]) != "second" || string(f.objects["main|team/magpie/usage/other.magpie-usage"]) != "other computer" {
@@ -869,7 +869,7 @@ func TestGitHubBranchMovedMeanwhile(t *testing.T) {
 			f.objects["main|team/magpie/"+file] = []byte("other computer's backup")
 			f.advance("main")
 		}
-		if _, err := g.put(context.Background(), []byte("second"), v.ETag); !errors.Is(err, errChanged) {
+		if _, err := g.put(context.Background(), []byte("second"), v); !errors.Is(err, errChanged) {
 			t.Fatalf("another computer's backup must go through the merge: %v", err)
 		}
 		if string(f.objects["main|team/magpie/"+file]) != "other computer's backup" {
@@ -879,7 +879,7 @@ func TestGitHubBranchMovedMeanwhile(t *testing.T) {
 	t.Run("branch deleted", func(t *testing.T) {
 		f, g, v := setup(t)
 		f.beforeRef = func() { delete(f.heads, "main") }
-		_, err := g.put(context.Background(), []byte("second"), v.ETag)
+		_, err := g.put(context.Background(), []byte("second"), v)
 		if err == nil || errors.Is(err, errChanged) || !strings.Contains(err.Error(), "Reference does not exist") {
 			t.Fatalf("a deleted branch must be an error, not a merge: %v", err)
 		}
@@ -901,7 +901,7 @@ func TestGitHubEmptyRepositoryLargeBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	large := []byte(strings.Repeat("sealed ", 1000))
-	v, err := g.put(ctx, large, "")
+	v, err := g.put(ctx, large, version{})
 	if err != nil {
 		t.Fatalf("a large first backup in an empty repository: %v", err)
 	}

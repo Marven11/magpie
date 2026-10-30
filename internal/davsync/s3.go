@@ -247,10 +247,10 @@ func (s *s3) get(ctx context.Context, have version) (data []byte, v version, err
 // conditional PUT: each write there looks at the ETag first instead.
 var unconditional sync.Map
 
-// put writes the backup over the version read (etag) — or, with none, only
-// where there is none yet — and errChanged when another computer wrote in
-// between.
-func (s *s3) put(ctx context.Context, data []byte, etag string) (version, error) {
+// put writes the backup over the version read — or, with none, only where
+// there is none yet — and errChanged when another computer wrote in between.
+func (s *s3) put(ctx context.Context, data []byte, have version) (version, error) {
+	etag := have.ETag
 	where := s.endpoint.String() + " " + s.bucket
 	if _, no := unconditional.Load(where); !no {
 		h := map[string]string{"Content-Type": "application/octet-stream"}

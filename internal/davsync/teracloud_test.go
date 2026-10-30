@@ -236,7 +236,7 @@ func TestSyncTeraCloudStillSeesOtherWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.put(ctx, []byte("one"), ""); err != nil {
+	if _, err := d.put(ctx, []byte("one"), version{}); err != nil {
 		t.Fatal(err)
 	}
 	_, v, err := d.get(ctx, version{})
@@ -246,7 +246,7 @@ func TestSyncTeraCloudStillSeesOtherWrites(t *testing.T) {
 	fake.mu.Lock()
 	fake.write(name, []byte("other computer"))
 	fake.mu.Unlock()
-	if _, err := d.put(ctx, []byte("two"), v.ETag); !errors.Is(err, errChanged) {
+	if _, err := d.put(ctx, []byte("two"), v); !errors.Is(err, errChanged) {
 		t.Fatalf("write over a replaced version: %v, want errChanged", err)
 	}
 	if got := string(fake.files[name]); got != "other computer" {

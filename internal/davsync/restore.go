@@ -177,7 +177,7 @@ func Upload(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		v, err := d.put(ctx, sealed, ver.ETag)
+		v, err := d.put(ctx, sealed, ver)
 		if errors.Is(err, errChanged) {
 			return errors.New("the file on the server changed while it was being replaced, so it wasn't: sync now to see what it is")
 		}

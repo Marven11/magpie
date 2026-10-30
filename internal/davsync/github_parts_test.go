@@ -52,13 +52,13 @@ func TestGitHubSplitBackup(t *testing.T) {
 	}
 	ctx := context.Background()
 	small := []byte("an earlier sealed backup")
-	v, err := g.put(ctx, small, "")
+	v, err := g.put(ctx, small, version{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	big := filled(50_800_000, 1)
 	before := f.writes
-	v, err = g.put(ctx, big, v.ETag)
+	v, err = g.put(ctx, big, v)
 	if err != nil {
 		t.Fatalf("a 50.8 MB backup: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestGitHubSplitBackup(t *testing.T) {
 	if _, _, err := g.get(ctx, v); !errors.Is(err, errNotModified) {
 		t.Fatalf("unchanged: %v", err)
 	}
-	if _, err := g.put(ctx, small, "old-sha"); !errors.Is(err, errChanged) || !bytesEqual(f.objects[backupAt], list) {
+	if _, err := g.put(ctx, small, version{ETag: "old-sha"}); !errors.Is(err, errChanged) || !bytesEqual(f.objects[backupAt], list) {
 		t.Fatalf("a stale version must not replace the backup: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func TestGitHubSplitBackup(t *testing.T) {
 	// away in the same commit.
 	mid := filled(20<<20, 2)
 	before = f.writes
-	if v, err = g.put(ctx, mid, v.ETag); err != nil {
+	if v, err = g.put(ctx, mid, v); err != nil {
 		t.Fatal(err)
 	}
 	if f.writes != before+1 || f.parts() != 2 {
@@ -95,7 +95,7 @@ func TestGitHubSplitBackup(t *testing.T) {
 	}
 
 	// Back to one file: no part is left behind.
-	if v, err = g.put(ctx, small, v.ETag); err != nil {
+	if v, err = g.put(ctx, small, v); err != nil {
 		t.Fatal(err)
 	}
 	if f.parts() != 0 || string(f.objects[backupAt]) != string(small) {
@@ -124,7 +124,7 @@ func TestGitHubOneFileBackupStillReads(t *testing.T) {
 		}
 	}
 	big := filled(40<<20, 4)
-	v, err := g.put(ctx, big, githubSHA(f.objects[backupAt]))
+	v, err := g.put(ctx, big, version{ETag: githubSHA(f.objects[backupAt])})
 	if err != nil || f.parts() != 3 {
 		t.Fatalf("parts over a backup in one file: %v, parts %d", err, f.parts())
 	}
@@ -141,7 +141,7 @@ func TestGitHubPartsOlderMagpie(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.put(context.Background(), filled(githubPart+1, 5), ""); err != nil {
+	if _, err := g.put(context.Background(), filled(githubPart+1, 5), version{}); err != nil {
 		t.Fatal(err)
 	}
 	_, err = backup.Open(f.objects[backupAt], githubConfig().Passphrase)
@@ -162,7 +162,7 @@ func TestGitHubPartsDamaged(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := g.put(context.Background(), filled(githubPart*2+10, 6), ""); err != nil {
+		if _, err := g.put(context.Background(), filled(githubPart*2+10, 6), version{}); err != nil {
 			t.Fatal(err)
 		}
 		var m githubParts
@@ -218,7 +218,7 @@ func TestGitHubPartsBranchMovedMeanwhile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		v, err := g.put(context.Background(), []byte("first"), "")
+		v, err := g.put(context.Background(), []byte("first"), version{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -233,7 +233,7 @@ func TestGitHubPartsBranchMovedMeanwhile(t *testing.T) {
 			f.advance("main")
 		}
 		f.requests = nil
-		if _, err := g.put(context.Background(), big, v.ETag); err != nil {
+		if _, err := g.put(context.Background(), big, v); err != nil {
 			t.Fatal(err)
 		}
 		posts := 0
@@ -256,7 +256,7 @@ func TestGitHubPartsBranchMovedMeanwhile(t *testing.T) {
 			f.objects[backupAt] = []byte("other computer's backup")
 			f.advance("main")
 		}
-		if _, err := g.put(context.Background(), big, v.ETag); !errors.Is(err, errChanged) {
+		if _, err := g.put(context.Background(), big, v); !errors.Is(err, errChanged) {
 			t.Fatalf("another computer's backup must go through the merge: %v", err)
 		}
 		if string(f.objects[backupAt]) != "other computer's backup" || f.parts() != 0 {
@@ -276,7 +276,7 @@ func TestGitHubEmptyRepositoryPartsBackup(t *testing.T) {
 	}
 	ctx := context.Background()
 	big := filled(githubPart+100, 9)
-	v, err := g.put(ctx, big, "")
+	v, err := g.put(ctx, big, version{})
 	if err != nil {
 		t.Fatalf("a first backup in parts: %v", err)
 	}

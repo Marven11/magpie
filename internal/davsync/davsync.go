@@ -1131,17 +1131,16 @@ func syncOnce(ctx context.Context, c Config, st *state) error {
 			}
 		}
 	}
-	etag := ver.ETag
+	// push writes b over the version last read; were, as the parts on the
+	// server and here were before it, is kept when the write is blind
 	rebuilt := false // a damaged server file replaced by this computer's merge
-	// push writes b over etag; were, as the parts on the server and here
-	// were before it, is kept when the write is blind
-	push := func(b backup.Bundle, etag string, were blind) error {
+	push := func(b backup.Bundle, have version, were blind) error {
 		b.Created, b.App = time.Now().UTC(), "magpie"
 		sealed, err := backup.Seal(b, c.Passphrase)
 		if err != nil {
 			return err
 		}
-		v, err := d.put(ctx, sealed, etag)
+		v, err := d.put(ctx, sealed, have)
 		if err != nil {
 			return err
 		}
@@ -1154,7 +1153,7 @@ func syncOnce(ctx context.Context, c Config, st *state) error {
 		return nil
 	}
 	if data == nil { // nothing there yet: this computer's setup is the first
-		if err := push(local, "", blind{}); err != nil {
+		if err := push(local, version{}, blind{}); err != nil {
 			return err
 		}
 		st.Own = after
@@ -1335,7 +1334,7 @@ func syncOnce(ctx context.Context, c Config, st *state) error {
 	// A rebuild always writes back: the server's file is the damaged one,
 	// so even a merge that matches the cached copy must replace it.
 	if rebuilt || !maps.Equal(M, R) {
-		if err := push(merged, etag, blind{Remote: R, Local: pending}); err != nil {
+		if err := push(merged, ver, blind{Remote: R, Local: pending}); err != nil {
 			return err
 		}
 	}
