@@ -176,12 +176,28 @@ func authorize(req *http.Request, api string) (token, from string) {
 // Refused is the error for a 401 from GitHub to a request that carried the
 // token: which token it was, never the token itself.
 func Refused() error {
-	_, from := Token()
 	where := "the GitHub token in Settings → Network and sharing"
-	if _, ok := SettingsRefused(); !ok && from != "settings" {
+	if from := refusedFrom(); from != "" && from != "settings" {
 		where = from + " (no GitHub token is set in Settings → Network and sharing)"
 	}
 	return fmt.Errorf("GitHub refused %s: it may have expired or been revoked", where)
+}
+
+// refusedFrom is where the token GitHub refused came from — "settings" or
+// the environment variable's name — and "" when the one in hand isn't
+// refused. Token says "" for a refused token too, since a refused one isn't
+// a token to send; its error still has to name it, or the message reads
+// "GitHub refused  (no GitHub token is set …)", with the space where it was.
+func refusedFrom() string {
+	if t := strings.TrimSpace(settings.Load().GitHubToken); t != "" && isRefused(t) {
+		return "settings"
+	}
+	for _, k := range Env {
+		if t := strings.TrimSpace(os.Getenv(k)); t != "" && isRefused(t) {
+			return k
+		}
+	}
+	return ""
 }
 
 // Limited is GitHub turning requests away for a while: until when (zero

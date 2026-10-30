@@ -119,6 +119,23 @@ func TestEnvTokenRefusedNotSentAgain(t *testing.T) {
 	}
 }
 
+// The error for a 401 names the token that was refused, and an environment
+// one's error names its variable: Token() says "" for a refused token, so the
+// message read "GitHub refused  (no GitHub token is set …)", with a space
+// where the variable should be.
+func TestRefusedNamesTheEnvironmentVariable(t *testing.T) {
+	setToken(t, "", "ghp_env_stale", "")
+	f := newFakeAPI(t)
+	f.get(t)
+	err := Refused()
+	if !strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Errorf("Refused() = %q, want it to name GITHUB_TOKEN", err.Error())
+	}
+	if strings.Contains(err.Error(), "refused  (") {
+		t.Errorf("Refused() = %q, with a gap where the variable was", err.Error())
+	}
+}
+
 // The token set in Settings is the user's own choice, so its refusal is
 // said — and the check goes on: the request is asked again without it, the
 // anonymous answer is the one given back, and the token isn't sent again
