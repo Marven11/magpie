@@ -75,8 +75,10 @@ func TestCodexCustomProviderModelHasEfforts(t *testing.T) {
 	if strings.Join(opts, ",") != ",low,high,max" {
 		t.Errorf("effort options: %v", opts)
 	}
-	// Default says what Codex takes then: the catalog's default
-	if ef[0].Takes != "high" {
+	// Default says what Codex takes then: the catalog's default, which is
+	// the level the effort new sessions start at is nearest to, not the
+	// middle of the road
+	if ef[0].Takes != "low" {
 		t.Errorf("default takes %q", ef[0].Takes)
 	}
 

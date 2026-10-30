@@ -166,7 +166,7 @@ func TakesEffort(ms []catalog.Model, id string) string {
 	if d, ok := cacheLevels()[slug]; ok && (chatgpt || slug == id) {
 		return d
 	}
-	return DefaultEffort(e)
+	return ModelDefault(e, NewSessionEffort())
 }
 
 // cacheLevels is the default_reasoning_level of each of CacheEntries'
