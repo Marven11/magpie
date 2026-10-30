@@ -466,6 +466,14 @@ func providerCmd(args []string) error {
 			return err
 		}
 		to := strings.ToLower(strings.TrimSpace(p.ID))
+		// the id is checked here, not by Rename below: Save writes the other
+		// k=v pairs first, so a bad id made the command fail with half of
+		// what was asked for already in providers.json
+		if false { // TEMPORARY: the id guard held back for its own commit
+			if to != from && (to == "" || to != provider.Slug(to)) {
+				return fmt.Errorf("a provider's id must be lowercase letters, digits and dashes, not %q", to)
+			}
+		}
 		p.ID = from
 		if err := provider.Save(*p); err != nil {
 			return err
@@ -599,7 +607,11 @@ func providerCmd(args []string) error {
 		}
 		res, wait := p.Test, 30*time.Second
 		if models := rest[1:]; len(models) > 0 {
-			res, wait = func(ctx context.Context) []provider.Result { return p.TestModels(ctx, models) }, 90*time.Second
+			bare := make([]string, 0, len(models))
+			for _, m := range models {
+				bare = append(bare, bareModel(*p, m))
+			}
+			res, wait = func(ctx context.Context) []provider.Result { return p.TestModels(ctx, bare) }, 90*time.Second
 		}
 		ctx, cancel := context.WithTimeout(provider.TestAs(context.Background(), as), wait)
 		defer cancel()
@@ -1093,6 +1105,9 @@ func applyPairs(p *provider.Provider, pairs []string) error {
 			p.Catalog = v
 		case "models":
 			p.Models = splitIDs(v, nil)
+			for i, m := range p.Models {
+				p.Models[i] = bareModel(*p, m)
+			}
 		case "website":
 			p.Website = v
 		case "keys":
@@ -1515,6 +1530,9 @@ func accountModelsCmd(rest []string) error {
 		ms := rest[2:]
 		if len(ms) == 1 && (ms[0] == "all" || ms[0] == "-") {
 			ms = nil
+		}
+		for i, m := range ms {
+			ms[i] = bareModel(*p, m)
 		}
 		if err := provider.SetAccountModels(p.ID, rest[1], ms); err != nil {
 			return err
@@ -2041,6 +2059,17 @@ func printMoved(moved []agent.Move) {
 	}
 }
 
+// bareModel is a model id as its provider keeps it. `magpie models` and
+// `magpie provider <id>` print them as `<id>/<model>`, which is also how an
+// agent is told them (and how a provider's models are addressed elsewhere),
+// so an id copied from either and typed back carries the provider's prefix:
+// kept as given it became a model the vendor doesn't have, under an id of
+// the provider's twice, and the models it really serves were no longer
+// exposed.
+func bareModel(p provider.Provider, id string) string {
+	return strings.TrimPrefix(strings.TrimSpace(id), p.ID+"/")
+}
+
 // editPicks works out a provider's picks from `magpie provider models <id>
 // args…`: plain ids replace them, all (or -) gives the default back, and
 // +id / -id add one to or take one out of the models exposed now, so a
@@ -2056,7 +2085,11 @@ func editPicks(p provider.Provider, args []string) ([]string, error) {
 		}
 	}
 	if edits == 0 {
-		return slices.Clone(args), nil
+		picks := make([]string, 0, len(args))
+		for _, a := range args {
+			picks = append(picks, bareModel(p, a))
+		}
+		return picks, nil
 	}
 	if edits != len(args) {
 		return nil, fmt.Errorf("give either the whole list (magpie provider models %s a b c) or only changes (+a -b), not both", p.ID)
