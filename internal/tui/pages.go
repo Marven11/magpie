@@ -1487,9 +1487,6 @@ func (m model) updateAsk(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		v := strings.TrimSpace(m.ask.input.Value())
-		if v == "" && !m.ask.empty {
-			return m, nil
-		}
 		m.mode = m.back
 		return m, m.ask.onEnter(v)
 	}

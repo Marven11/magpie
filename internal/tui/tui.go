@@ -606,9 +606,9 @@ func (m model) updateName(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		n := strings.TrimSpace(m.name.Value())
-		if n == "" {
-			return m, nil
-		}
+		// an empty name isn't dropped here: profile.Save says "profile name is
+		// empty", which the status line can show, where a silent return left
+		// the key looking broken
 		m.mode = modeList
 		return m, func() tea.Msg {
 			p, err := profile.Snapshot()
