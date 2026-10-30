@@ -94,6 +94,32 @@ func TestRollingWindowRejectsJunk(t *testing.T) {
 }
 
 // A rolling window's start moves with the clock while the log stays as it
+// is: its page asked again later doesn't list, count or chart a call that
+// has fallen out of it — the page cache is kept by the period's text and the
+// day, and a page of last:1h asked at noon went on answering at two (#2075's
+// sibling; the cells were already kept apart by their start).
+func TestRollingWindowPageIsNotKeptStale(t *testing.T) {
+	pageHome(t)
+	at := time.Date(2026, 10, 10, 12, 0, 0, 0, time.Local)
+	holdClock(t, at)
+	Append(Record{Time: at.Add(-30 * time.Minute), Agent: "claude", Provider: "openai", Model: "m", Input: 10, Status: 200})
+	p, _ := LastOf(time.Hour)
+	if page := QueryPage(p, Filter{}, 0, 50); page.Total != 1 || len(page.Rows) != 1 {
+		t.Fatalf("at noon: %d calls, %d rows, want 1 and 1", page.Total, len(page.Rows))
+	}
+	later := at.Add(2 * time.Hour)
+	holdClock(t, later)
+	page := QueryPage(p, Filter{}, 0, 50)
+	if page.Total != 0 || len(page.Rows) != 0 || page.Sum.Calls != 0 {
+		t.Errorf("two hours later: %d calls, %d rows, %v in the sum, want none (the call is 2.5 hours old)", page.Total, len(page.Rows), page.Sum.Calls)
+	}
+	// and the window it says it read is the one it was asked at
+	if since := p.Since(later); !since.Equal(later.Add(-time.Hour)) {
+		t.Fatalf("the window starts at %s", since)
+	}
+}
+
+// A rolling window's start moves with the clock while the log stays as it
 // is: a summary asked again later doesn't count a call that has fallen out
 // of it, as a kept summary would (#2075).
 func TestRollingWindowIsNotKeptStale(t *testing.T) {

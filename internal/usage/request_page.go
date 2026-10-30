@@ -921,9 +921,18 @@ func queryPageOf(p Period, f Filter, offset, limit int, readSource func(sessions
 	idx.keepWhileAsked()
 	idx.adopt(st)
 	q := pageKey{p, f, offset, limit, now.Format(time.DateOnly)}
-	if page, ok := idx.pages[q]; ok {
-		idx.Unlock()
-		return page
+	// A rolling window's start moves with now, so its page is never the same
+	// twice — its cells are kept apart for that reason (partKey's since, below),
+	// and the page cache, keyed by the period's text and the day, would go on
+	// answering the page of an hour ago: calls that had left the window were
+	// still listed, counted and charted, while the same window's summary
+	// (summary_cache.go) and `magpie usage --last` were read afresh (#2075).
+	rolling := p.Last() > 0
+	if !rolling {
+		if page, ok := idx.pages[q]; ok {
+			idx.Unlock()
+			return page
+		}
 	}
 	if h, ok := idx.heats[q]; ok && h.version == version && time.Since(h.at) < heatFresh {
 		idx.Unlock()
@@ -1021,7 +1030,9 @@ func queryPageOf(p Period, f Filter, offset, limit int, readSource func(sessions
 	if len(shared.pages) >= 16 {
 		shared.pages = map[pageKey]RequestPage{}
 	}
-	shared.pages[q] = page
+	if !rolling {
+		shared.pages[q] = page
+	}
 	if p == heatmapPeriod {
 		if shared.heats == nil || len(shared.heats) >= 16 {
 			shared.heats = map[pageKey]heatPage{}
