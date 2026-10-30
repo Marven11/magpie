@@ -42,7 +42,12 @@ import (
 // Done is one thing uninstalling did, or couldn't.
 type Done struct {
 	What string `json:"what"`
-	Err  string `json:"error,omitempty"`
+	// Err is why it failed
+	Err string `json:"error,omitempty"`
+	// Note is why it was kept: a folder left on purpose says what it is
+	// for, and it isn't a failure — a field called error on a kept folder
+	// was read as one by anything reading this report by its names
+	Note string `json:"note,omitempty"`
 }
 
 // Report is what Run did.
@@ -242,7 +247,7 @@ func Data(r *Report) {
 		r.Data = append(r.Data, d)
 	}
 	if keep != "" {
-		r.Kept = append(r.Kept, Done{What: keep, Err: "skills and servers your agents use from magpie's Library"})
+		r.Kept = append(r.Kept, Done{What: keep, Note: "skills and servers your agents use from magpie's Library"})
 	}
 }
 
@@ -351,7 +356,7 @@ func (r *Report) Says() []string {
 		line("deleted", d)
 	}
 	for _, d := range r.Kept {
-		out = append(out, "· kept "+d.What+": "+d.Err)
+		out = append(out, "· kept "+d.What+": "+d.Note)
 	}
 	return out
 }

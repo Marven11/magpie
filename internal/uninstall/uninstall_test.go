@@ -161,6 +161,15 @@ func TestDataKeepsLibraryInUse(t *testing.T) {
 	if len(r.Kept) != 1 || r.Kept[0].What != library.Dir() {
 		t.Fatalf("kept %+v", r.Kept)
 	}
+	// a folder kept on purpose is a note, not a failure: the report's own
+	// error field is what Failed reads, and anything reading this JSON by
+	// its names took the reason for an uninstall gone wrong
+	if r.Kept[0].Err != "" || r.Kept[0].Note == "" {
+		t.Fatalf("kept %+v: want its reason in note, not in error", r.Kept[0])
+	}
+	if r.Failed() {
+		t.Fatal("a kept folder failed the uninstall")
+	}
 
 	// an empty Library goes with the rest
 	os.RemoveAll(filepath.Join(library.Dir(), "skills", "docx"))
