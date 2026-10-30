@@ -14,7 +14,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -142,15 +144,22 @@ func Send(ctx context.Context, version, what string, now time.Time) error {
 }
 
 // installID is this computer's id, made up the first time: random, tied to
-// nothing about it or the user.
+// nothing about it or the user. A file that is there but holds something
+// else — half-written, an id of another shape — is an error: writing a new
+// id over it would end the old one's run and go on as another computer.
 func installID() (string, error) {
 	p := filepath.Join(settings.Dir(), "install-id")
-	if b, err := os.ReadFile(p); err == nil {
+	b, err := os.ReadFile(p)
+	switch {
+	case err == nil:
 		if id := strings.TrimSpace(string(b)); len(id) == 32 {
 			return id, nil
 		}
+		return "", fmt.Errorf("stats: %s holds no install id; remove it to have a new one", p)
+	case !errors.Is(err, fs.ErrNotExist):
+		return "", err
 	}
-	b := make([]byte, 16)
+	b = make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}

@@ -221,3 +221,29 @@ func TestSendPartnerCounts(t *testing.T) {
 		t.Fatalf("sent with usage off: %v", got[2:])
 	}
 }
+
+// An install-id file holding something other than an id — one os.WriteFile
+// left half written, an id of another shape — is an error, not another
+// computer: a new id written over it would end the old id's run and count
+// this machine as a new user. A file that isn't there yet is made.
+func TestInstallIDKeepsAHalfWrittenFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	p := filepath.Join(settings.Dir(), "install-id")
+	if got, err := installID(); err != nil || len(got) != 32 {
+		t.Fatalf("a first id: %q %v", got, err)
+	}
+	if got, err := installID(); err != nil || len(got) != 32 {
+		t.Fatalf("the same id again: %q %v", got, err)
+	}
+	const half = "bfaaeac0162c86"
+	if err := os.WriteFile(p, []byte(half), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installID(); err == nil || !strings.Contains(err.Error(), p) {
+		t.Fatalf("a half-written id: %v, want an error naming %s", err, p)
+	}
+	if b, _ := os.ReadFile(p); string(b) != half {
+		t.Fatalf("the file was written over: %q", b)
+	}
+}
