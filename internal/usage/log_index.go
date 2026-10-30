@@ -145,7 +145,7 @@ func readLogSnapshot() *logSnapshot {
 	logAppends.Lock()
 	notePath, noteBase, noteLast := logAppends.path, logAppends.base, logAppends.last
 	logAppends.Unlock()
-	trusted := old != nil && old.settled && logChangeStamp(info) != "" && notePath == path && sameLogInfo(oldInfo(old), noteBase) && sameLogInfo(info, noteLast)
+	trusted := old != nil && old.settled && logChangeStamp(info) != "" && notePath == path && sameLogInfo(old.info, noteBase) && sameLogInfo(info, noteLast)
 	continued := old != nil && old.path == path && old.info != nil && sameLogFile(old.info, info) && info.Size() > old.info.Size() && (trusted || old.hash != "" && logRecordHash(path, old.off) == old.hash)
 	// The parse is the fingerprint: it hashes the lines it reads, continuing
 	// the old snapshot's hash when it continues its blocks.
@@ -484,13 +484,6 @@ func marshalLogHash(h hash.Hash) []byte {
 		return nil
 	}
 	return state
-}
-
-func oldInfo(s *logSnapshot) os.FileInfo {
-	if s == nil {
-		return nil
-	}
-	return s.info
 }
 
 // A read in the change stamp's clock tick cannot prove that a later equal

@@ -466,7 +466,6 @@ type rowRef struct {
 	Index int
 }
 
-func (r rowRef) row() Row { return r.Chunk.row(r.Index) }
 func refNewer(a, b rowRef) bool {
 	return timedOf(a, &a.Chunk.Rows[a.Index]).newer(timedOf(b, &b.Chunk.Rows[b.Index]))
 }
