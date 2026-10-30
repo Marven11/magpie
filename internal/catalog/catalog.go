@@ -1,6 +1,7 @@
 // Package catalog knows which models exist. It reads the models.dev catalog
-// (from magpie's own cache or OpenCode's), Codex's model cache, and falls back
-// to a small built-in list so the picker is never empty.
+// (from magpie's own cache or OpenCode's) and Codex's model cache; nothing is
+// compiled in, so with neither read the catalog is empty (Provider says the
+// same of itself).
 package catalog
 
 import (
