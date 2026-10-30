@@ -22,12 +22,17 @@ import (
 	"crypto/sha256"
 	"encoding/base32"
 	"encoding/json"
+	"errors"
+	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/yetone/magpie/internal/steady"
 	"regexp"
 	"slices"
 	"sort"
-	"strings"
 	"sync"
 	"unicode"
 	"unicode/utf8"
@@ -748,18 +753,41 @@ func SetKeyPath(path string) {
 	}
 }
 
-// loadKey is called with mu held.
+// loadKey is called with mu held. It writes the key where SetKeyPath put it
+// through steady.WriteFile, which flushes a temporary file and renames it
+// in: a reader — this process after a crash, or the next run — sees the whole
+// key or no file, never a truncated one. A file that is there and can't be
+// read (owned by another user, restored from a backup as root) is left as it
+// is: a new key written over it would take the old one with it, and every
+// placeholder the vendor's cache was primed with changes with the key.
 func loadKey() []byte {
 	if keyPath != "" {
-		if b, err := os.ReadFile(keyPath); err == nil && len(b) >= 32 {
+		b, err := os.ReadFile(keyPath)
+		switch {
+		case err == nil && len(b) >= 32:
 			return b[:32]
+		case err != nil && !errors.Is(err, fs.ErrNotExist):
+			log.Printf("redact: %s: %v; the placeholders of this run won't match the ones before it", keyPath, err)
+			return newKey()
 		}
 	}
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
+	b := newKey()
 	if keyPath != "" {
-		_ = os.MkdirAll(filepath.Dir(keyPath), 0o700)
-		_ = os.WriteFile(keyPath, b, 0o600)
+		if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+			log.Printf("redact: %v; the placeholders of the next run will be others", err)
+			return b
+		}
+		if err := steady.WriteFile(keyPath, b, 0o600); err != nil {
+			log.Printf("redact: %v; the placeholders of the next run will be others", err)
+		}
+	}
+	return b
+}
+
+func newKey() []byte {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("redact: no random key: %v", err)
 	}
 	return b
 }
