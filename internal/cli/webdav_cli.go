@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -168,9 +169,12 @@ func syncCmd(k syncKind, args []string) error {
 		}
 		m := davsync.Manual
 		if args[1] != "off" {
-			if _, err := fmt.Sscan(args[1], &m); err != nil {
+			// Atoi, not Sscan: "15x" and "3minutes" were taken as 15 and 3
+			v, err := strconv.Atoi(args[1])
+			if err != nil {
 				return fmt.Errorf("magpie %s auto off|3|15|30|60, not %q", k.cmd, args[1])
 			}
+			m = v
 		}
 		if err := davsync.SetAuto(m); err != nil {
 			return err
