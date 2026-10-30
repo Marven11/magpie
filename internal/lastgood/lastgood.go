@@ -240,8 +240,8 @@ var (
 	notes   []Note
 )
 
-// note records that path was read from its .bak, once per path until
-// Forget: a file read hundreds of times over is logged once.
+// note records that path was read from its .bak, once per path until Reset:
+// a file read hundreds of times over is logged once.
 func note(path, why string) {
 	notesMu.Lock()
 	defer notesMu.Unlock()

@@ -410,7 +410,11 @@ func Parse(s string) (*url.URL, error) {
 	return url.Parse(s)
 }
 
-// Describe says, for the settings page, what a request to u would use.
+// Describe says, for the settings page, which proxy magpie is set to use and
+// where that came from. What env says is asked about https://chatgpt.com: the
+// page shows one answer, and the environment's NO_PROXY can name some hosts and
+// not others, so a NO_PROXY naming that host reads "none" while a request to
+// another vendor still goes through env's proxy.
 func Describe() (proxy, source string) {
 	defer func() { proxy = Redact(proxy) }()
 	switch s := strings.TrimSpace(settings.Load().Proxy); s {
