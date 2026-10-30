@@ -469,10 +469,8 @@ func providerCmd(args []string) error {
 		// the id is checked here, not by Rename below: Save writes the other
 		// k=v pairs first, so a bad id made the command fail with half of
 		// what was asked for already in providers.json
-		if false { // TEMPORARY: the id guard held back for its own commit
-			if to != from && (to == "" || to != provider.Slug(to)) {
-				return fmt.Errorf("a provider's id must be lowercase letters, digits and dashes, not %q", to)
-			}
+		if to != from && (to == "" || to != provider.Slug(to)) {
+			return fmt.Errorf("a provider's id must be lowercase letters, digits and dashes, not %q", to)
 		}
 		p.ID = from
 		if err := provider.Save(*p); err != nil {
