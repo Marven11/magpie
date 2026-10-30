@@ -45,6 +45,64 @@ selected-background-alpha = 0.08
 selected-text             = "#7aa2f7"
 `
 
+// A theme's files are TOML, and not only the TOML magpie's own test wrote: a
+// literal string keeps its quotes inside the value only, an escaped quote is
+// unescaped, a '#' inside a string isn't a comment, and an array is read as the
+// items it holds. Read by splitting lines, each of these came out wrong and
+// looked the same as a key the theme doesn't set — the palette and font fell
+// back to magpie's own Tokyo-night defaults, with nothing saying so.
+func TestParseReadsTOML(t *testing.T) {
+	m := Parse([]byte(`
+font = 'JetBrains Mono'
+label = "say \"hi\""
+title = "notes # not a comment"
+url = 'https://x/y#frag'
+color = "#1a1b26" # however this is
+size = 12
+alpha = 0.04
+sharp = true
+gradient = ["rgba(33ccffee)", "rgba(00ff99ee)", "45deg"]
+
+[controls]
+normal-fill-alpha = 0.04
+
+[popups.inner]
+background = "#1a1b26"
+`))
+	for k, want := range map[string]string{
+		"font":                       "JetBrains Mono",
+		"label":                      `say "hi"`,
+		"title":                      "notes # not a comment",
+		"url":                        "https://x/y#frag",
+		"color":                      "#1a1b26",
+		"size":                       "12",
+		"alpha":                      "0.04",
+		"sharp":                      "true",
+		"gradient":                   "rgba(33ccffee) rgba(00ff99ee) 45deg",
+		"controls.normal-fill-alpha": "0.04",
+		"popups.inner.background":    "#1a1b26",
+	} {
+		if m[k] != want {
+			t.Errorf("%s = %q, want %q", k, m[k], want)
+		}
+	}
+	// and the gradient still reads as its first colour
+	if c, ok := parseColor(m["gradient"]); !ok || c != (color{0x33 / 255.0, 0xcc / 255.0, 0xff / 255.0, 0xee / 255.0}) {
+		t.Errorf("gradient is %v, %v", c, ok)
+	}
+}
+
+// A theme file read while it is being written is TOML only up to the cut:
+// what came before it is still read, so the theme is drawn from that.
+func TestParseOfAFileThatStopsShort(t *testing.T) {
+	m := Parse([]byte("background = \"#1a1b26\"\nforeground = \"#a9"))
+	if m["background"] != "#1a1b26" {
+		t.Fatalf("background = %q", m["background"])
+	}
+}
+
+// The shell tokens magpie reads from a theme like Omarchy's own are the same
+// as before: the palette by name, a number as it is written.
 func TestParse(t *testing.T) {
 	m := Parse([]byte(tokyoShell))
 	for k, want := range map[string]string{

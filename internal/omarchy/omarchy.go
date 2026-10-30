@@ -12,8 +12,6 @@
 package omarchy
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -23,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/proc"
@@ -81,40 +81,69 @@ type Theme struct {
 	Vars  map[string]string `json:"vars"`  // CSS custom properties
 }
 
-// Parse reads a TOML file's key = value lines, a section's keys as
-// "section.key": the little of TOML the theme files use (strings, numbers,
-// booleans, comments).
+// Parse reads a TOML file, a section's keys as "section.key", each value as
+// the text the theme's own reader would take it for: a string as it is written
+// (a literal 'one' too, and a "say \"hi\"" unescaped), a number and a boolean
+// as TOML writes them, and an array as its items with a space between them —
+// which is how a gradient is read (parseColor takes its first colour). A file
+// that isn't TOML gives what was read before it went wrong: a theme is drawn
+// from the rest rather than not at all.
 func Parse(b []byte) map[string]string {
-	out := map[string]string{}
-	section := ""
-	sc := bufio.NewScanner(bytes.NewReader(b))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || line[0] == '#' {
-			continue
-		}
-		if line[0] == '[' {
-			section = strings.Trim(line, "[] ")
-			continue
-		}
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
-		if strings.HasPrefix(v, `"`) {
-			if end := strings.Index(v[1:], `"`); end >= 0 {
-				v = v[1 : end+1]
-			}
-		} else if i := strings.Index(v, "#"); i >= 0 {
-			v = strings.TrimSpace(v[:i])
-		}
-		if section != "" {
-			k = section + "." + k
-		}
-		out[k] = v
+	var doc map[string]any
+	if err := toml.Unmarshal(b, &doc); err != nil {
+		// a partial read is what the parser gives for the part it took;
+		// go-toml reports the line it stopped at and leaves the map
+		// with what came before
 	}
+	out := map[string]string{}
+	flatten(out, "", doc)
 	return out
+}
+
+// flatten writes doc's entries into out under prefix, a table's own under
+// "prefix.key".
+func flatten(out map[string]string, prefix string, doc map[string]any) {
+	for k, v := range doc {
+		key := k
+		if prefix != "" {
+			key = prefix + "." + k
+		}
+		switch v := v.(type) {
+		case map[string]any:
+			flatten(out, key, v)
+		case string:
+			out[key] = v
+		case bool:
+			out[key] = strconv.FormatBool(v)
+		case int64:
+			out[key] = strconv.FormatInt(v, 10)
+		case float64:
+			out[key] = strconv.FormatFloat(v, 'g', -1, 64)
+		case []any:
+			if s, ok := items(v); ok {
+				out[key] = s
+			}
+		}
+	}
+}
+
+// items is an array's values as one text, a space between them: what
+// parseColor reads a gradient from ("rgba(…) rgba(…) 45deg").
+func items(v []any) (string, bool) {
+	parts := make([]string, 0, len(v))
+	for _, it := range v {
+		switch it := it.(type) {
+		case string:
+			parts = append(parts, it)
+		case int64:
+			parts = append(parts, strconv.FormatInt(it, 10))
+		case float64:
+			parts = append(parts, strconv.FormatFloat(it, 'g', -1, 64))
+		default:
+			return "", false
+		}
+	}
+	return strings.Join(parts, " "), true
 }
 
 // color is an RGBA colour, each part 0..1.
@@ -399,12 +428,12 @@ func Current() (Theme, bool) {
 	seen = stamp
 	cached = Theme{
 		Name: strings.TrimSpace(string(name)), Mode: mode, Vars: vars,
-		Stamp: fmt.Sprintf("%x", fnv(stamp+d+font+strconv.Itoa(rounding)+strconv.Itoa(border))),
+		Stamp: fmt.Sprintf("%x", hashOf(stamp+d+font+strconv.Itoa(rounding)+strconv.Itoa(border))),
 	}
 	return cached, true
 }
 
-func fnv(s string) uint64 {
+func hashOf(s string) uint64 {
 	h := uint64(14695981039346656037)
 	for i := 0; i < len(s); i++ {
 		h ^= uint64(s[i])
