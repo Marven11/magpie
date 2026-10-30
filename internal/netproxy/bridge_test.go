@@ -2,6 +2,7 @@ package netproxy
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -164,6 +165,61 @@ func TestBridgeSaysTheProxyIsDown(t *testing.T) {
 	if !strings.HasPrefix(string(got), "HTTP/1.1 502") || !strings.Contains(string(got), "socks connect tcp "+addr) {
 		t.Fatalf("answered %q", got)
 	}
+}
+
+// An accept that fails for a reason of its own (a process out of file
+// descriptors is the real one) ends the loop. A listener left listening goes
+// on accepting into the kernel's queue with nobody to take it, so every
+// request through that bridge would connect and then wait for its deadline;
+// the address goes with the loop, and the next Bridge listens again.
+func TestBridgeListensAgainAfterAFailedAccept(t *testing.T) {
+	old := listenLoopback
+	t.Cleanup(func() { listenLoopback = old })
+	down, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listenLoopback = func() (net.Listener, error) { return &refusingListener{Listener: down}, nil }
+	socks := &url.URL{Scheme: "socks5h", Host: "127.0.0.1:1"}
+	first, err := Bridge(socks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the loop is told at once; the cache goes with it
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		bridgesMu.Lock()
+		_, kept := bridges[socks.String()]
+		bridgesMu.Unlock()
+		if !kept {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the failed bridge is still handed out: every request through it connects and then waits")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	listenLoopback = old
+	second, err := Bridge(socks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second == first {
+		t.Fatalf("the same dead bridge is handed out again: %s", second)
+	}
+	c, err := net.Dial("tcp", strings.TrimPrefix(second, "http://"))
+	if err != nil {
+		t.Fatalf("the bridge that listens again can't be reached: %v", err)
+	}
+	c.Close()
+}
+
+// refusingListener is a listener whose Accept fails as one does when the
+// process is out of file descriptors.
+type refusingListener struct{ net.Listener }
+
+func (l *refusingListener) Accept() (net.Conn, error) {
+	return nil, &net.OpError{Op: "accept", Net: "tcp", Err: errors.New("too many open files")}
 }
 
 // A bridge handed the port of the SOCKS proxy it carries to, which a port

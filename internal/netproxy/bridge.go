@@ -60,17 +60,32 @@ func Bridge(socks *url.URL) (string, error) {
 		}
 	}
 	s := *socks
+	a := "http://" + ln.Addr().String()
+	bridges[key] = a
 	go func() {
 		for {
 			c, err := ln.Accept()
 			if err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
+				// Anything else (a process out of file descriptors, say)
+				// ends the loop, and a listener left listening goes on
+				// accepting into the kernel's queue with nobody to take it:
+				// every request through this bridge would connect and then
+				// wait for its deadline. So the address goes with it, and the
+				// next Bridge of the same SOCKS proxy listens again.
+				bridgesMu.Lock()
+				if bridges[key] == a {
+					delete(bridges, key)
+				}
+				bridgesMu.Unlock()
+				ln.Close()
 				return
 			}
 			go bridgeConn(c, &s)
 		}
 	}()
-	a := "http://" + ln.Addr().String()
-	bridges[key] = a
 	return a, nil
 }
 
