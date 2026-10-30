@@ -586,6 +586,12 @@ func Clashes(loaded []Loaded) map[string][]Clash {
 var (
 	hostMu  sync.Mutex
 	current *host
+	// currentHost is current for a reader that must not wait for hostMu:
+	// a startup holds that lock for as long as Bun takes to download and
+	// every plugin to load (two minutes at most), and Running is a boolean
+	// the Plugins page asks for on every look. Written under hostMu, by
+	// setCurrent only.
+	currentHost atomic.Pointer[host]
 	// generation counts the hosts started, so a caller can tell a
 	// restart happened (the provider cache is then stale)
 	generation atomic.Int64
@@ -733,7 +739,7 @@ func Restart() {
 	listSeen.Unlock()
 	hostMu.Lock()
 	h := current
-	current = nil
+	setCurrent(nil)
 	hostMu.Unlock()
 	if h != nil {
 		h.retire()
@@ -783,9 +789,16 @@ func (h *host) busy() bool {
 
 // Running is whether a host is up.
 func Running() bool {
-	hostMu.Lock()
-	defer hostMu.Unlock()
-	return current != nil && current.alive()
+	h := currentHost.Load()
+	return h != nil && h.alive()
+}
+
+// setCurrent is what current and currentHost both are set through, so a
+// reader without hostMu sees what a reader with it does; called with hostMu
+// held.
+func setCurrent(h *host) {
+	current = h
+	currentHost.Store(h)
 }
 
 // Warm starts the host if none is up and Bun is here. A plugin's page in
@@ -883,11 +896,11 @@ func get(ctx context.Context) (*host, error) {
 func getLocked(ctx context.Context) (*host, error) {
 	if hostStale.Swap(false) && current != nil {
 		go current.retire()
-		current = nil
+		setCurrent(nil)
 	}
 	if current != nil && current.alive() && current.proxyMoved() {
 		go current.retire()
-		current = nil
+		setCurrent(nil)
 	}
 	if current != nil && current.alive() {
 		return current, nil
@@ -896,7 +909,7 @@ func getLocked(ctx context.Context) (*host, error) {
 	if err != nil {
 		return nil, err
 	}
-	current = h
+	setCurrent(h)
 	return h, nil
 }
 
