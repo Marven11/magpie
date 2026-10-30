@@ -279,6 +279,42 @@ func TestOffAndHostSkip(t *testing.T) {
 	}
 }
 
+// A middleware bundled out of its entry and a module beside it
+// (index.middleware.js + rules.js) was compiled once and never again: the
+// stamp looked at the entry file alone, so a change to the module it imports
+// went unseen and the old one kept running.
+func TestReloadOnChangeOfAnImportedModule(t *testing.T) {
+	dir := t.TempDir()
+	rules := filepath.Join(dir, "rules.js")
+	if err := os.WriteFile(rules, []byte(`export const v = 1;`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entry := filepath.Join(dir, "x.middleware.js")
+	src := `import { v } from "./rules.js";
+export function onRequest(b) { b.v = v; return b; }`
+	if err := os.WriteFile(entry, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	use(t, plugin.Entry{Spec: entry})
+	run := func() string {
+		r := Begin(info())
+		defer r.End()
+		b, _ := r.Request([]byte(`{}`))
+		return string(b)
+	}
+	if got := run(); got != `{"v":1}` {
+		t.Fatal(got)
+	}
+	// the module changes, the entry does not
+	if err := os.WriteFile(rules, []byte(`export const v = 2;`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nextCheck.Store(0)
+	if got := run(); got != `{"v":2}` {
+		t.Fatal("the imported module wasn't reloaded:", got)
+	}
+}
+
 func TestReloadOnChange(t *testing.T) {
 	e := file(t, `export function onRequest(b) { b.v = 1; return b; }`)
 	use(t, e)

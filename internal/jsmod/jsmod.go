@@ -18,16 +18,25 @@ import (
 // bundled into the module. what names the kind of module in an error
 // ("a middleware").
 func Compile(root, file, what string) (*moejs.Module, error) {
+	m, _, err := CompileFiles(root, file, what)
+	return m, err
+}
+
+// CompileFiles is Compile and every file it read: file and the modules it
+// imports, so a caller can tell when one of them changes. On an error the
+// files read up to it are returned too.
+func CompileFiles(root, file, what string) (*moejs.Module, []string, error) {
 	src, err := os.ReadFile(file)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	files := []string{file}
 	entry, err := moejs.Compile(file, string(src))
 	if err != nil {
-		return nil, err
+		return nil, files, err
 	}
 	mods := map[string]*moejs.Module{file: entry}
-	return moejs.Link(entry, func(ref moejs.Referrer, spec string) (*moejs.Module, error) {
+	mod, err := moejs.Link(entry, func(ref moejs.Referrer, spec string) (*moejs.Module, error) {
 		if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
 			return nil, fmt.Errorf("%q: %s imports only files beside it; bundle packages into it", spec, what)
 		}
@@ -51,6 +60,8 @@ func Compile(root, file, what string) (*moejs.Module, error) {
 			return nil, err
 		}
 		mods[p] = m
+		files = append(files, p)
 		return m, nil
 	})
+	return mod, files, err
 }
