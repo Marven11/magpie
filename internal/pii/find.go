@@ -590,6 +590,12 @@ type span struct{ at, end int }
 // begins after a line's end in the first half of the overlap, else after
 // a space there, else at a rune's start. A text of pieceSize or less is
 // one piece; an empty one none.
+//
+// A text that isn't UTF-8 (a request's bytes, which redact hands over
+// unchecked when the string holds no backslash) may have no rune start in
+// the overlap at all; the walk to one stops at the piece's end then, so the
+// pieces still cover the text and none loses bytes to a bound it walked
+// past.
 func pieces(t string) []span { return cut(t, pieceSize) }
 
 // cut is pieces, of at most size each.
