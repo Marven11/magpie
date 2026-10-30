@@ -183,6 +183,53 @@ func TestFind(t *testing.T) {
 	}
 }
 
+// Known is asked as a page is drawn and says it doesn't wait on WSL: Find
+// runs wsl.exe under the lock it would take, 10s and then 30s a distro, so
+// it reads what Find left instead.
+func TestKnownDoesNotWaitOnWSL(t *testing.T) {
+	oldOn, oldRun := On, Run
+	t.Cleanup(func() { On, Run = oldOn, oldRun; Forget() })
+	On = true
+	Forget()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	Run = func(_ time.Duration, args ...string) ([]byte, error) {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-release
+		return utf16le("Fedora\r\n"), nil
+	}
+	going := make(chan struct{})
+	found := make(chan struct{})
+	go func() {
+		close(going)
+		Find("claude")
+		close(found)
+	}()
+	<-going
+	<-started // a run is under way, and Find holds the lock it is under
+	known := make(chan bool, 1)
+	go func() {
+		_, ok := Known("claude")
+		known <- ok
+	}()
+	select {
+	case ok := <-known:
+		if ok {
+			t.Fatal("Known answered with what no Find had found yet")
+		}
+	case <-time.After(30 * time.Second):
+		close(release)
+		<-found
+		t.Fatal("Known waited on the WSL run Find holds the lock through")
+	}
+	close(release)
+	<-found
+}
+
 func TestArgv(t *testing.T) {
 	tool := Tool{Distro: "Ubuntu", Path: "/usr/bin/claude", PATH: "/usr/bin"}
 	a := tool.argv([]string{"-p"})

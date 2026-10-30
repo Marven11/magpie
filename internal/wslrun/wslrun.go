@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf16"
 
@@ -58,6 +59,22 @@ var found struct {
 	tools map[string]*Tool
 }
 
+// known is found.tools as the last Find left it, for Known: Find holds the
+// lock while it runs wsl.exe — 10s, then 30s a running distro — and Known is
+// asked as a page is drawn, where waiting on WSL is what it says it doesn't
+// do (ClaudeInWSL).
+var known atomic.Pointer[map[string]*Tool]
+
+// publishKnown puts found.tools where Known reads it: the map itself is never
+// changed after it is stored, so a reader needs no lock.
+func publishKnown() {
+	m := make(map[string]*Tool, len(found.tools))
+	for k, v := range found.tools {
+		m[k] = v
+	}
+	known.Store(&m)
+}
+
 // findAge is how long an answer of Find's is kept: a distro started or
 // stopped meanwhile is seen within it.
 const findAge = time.Minute
@@ -87,6 +104,7 @@ func Find(name string) (Tool, bool) {
 		found.at, found.tools = map[string]time.Time{}, map[string]*Tool{}
 	}
 	found.at[name], found.tools[name] = time.Now(), nil
+	publishKnown()
 	names, ok := running()
 	if !ok {
 		return Tool{}, false
@@ -109,6 +127,7 @@ func Find(name string) (Tool, bool) {
 		}
 		if t, ok := parseProbe(d, string(out)); ok {
 			found.tools[name] = &t
+			publishKnown()
 			return t, true
 		}
 	}
@@ -225,12 +244,13 @@ func Up(distro string) bool {
 }
 
 // Known is the tool Find found last for name, however long ago, without
-// looking again: for a page to say where it runs without waiting on WSL.
+// looking again, and without its lock: for a page to say where it runs
+// without waiting on WSL.
 func Known(name string) (Tool, bool) {
-	found.Lock()
-	defer found.Unlock()
-	if p := found.tools[name]; p != nil {
-		return *p, true
+	if m := known.Load(); m != nil {
+		if p := (*m)[name]; p != nil {
+			return *p, true
+		}
 	}
 	return Tool{}, false
 }
@@ -239,6 +259,7 @@ func Known(name string) (Tool, bool) {
 func Forget() {
 	found.Lock()
 	found.at, found.tools = nil, nil
+	publishKnown()
 	found.Unlock()
 	foundIn.Lock()
 	foundIn.at, foundIn.tools = nil, nil
