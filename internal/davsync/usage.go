@@ -310,13 +310,24 @@ func readSealed(ctx context.Context, fs files, f, pass string) ([]byte, error) {
 func (d *dav) usageURL(name string) string { return d.url(folder, usageFolder, name) }
 
 func (d *dav) list(ctx context.Context) (map[string]string, error) {
-	res, err := d.do(ctx, "PROPFIND", d.usageURL(""), nil, map[string]string{"Depth": "1"})
+	res, err := d.send(ctx, "PROPFIND", d.usageURL(""), nil, map[string]string{"Depth": "1"})
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close()
-	if res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusConflict || res.StatusCode == http.StatusGone {
+	switch res.StatusCode {
+	case http.StatusNotFound, http.StatusConflict, http.StatusGone:
 		return map[string]string{}, nil
+	// a server that answers 403 for what isn't there — a Synology does
+	// for a shared folder not made — answers it for this one too, and do,
+	// which turns every 403 into one error, made a computer with no usage
+	// yet read it as "this account may not use the folder": the folder
+	// this one is in tells the two apart, as get does for the file
+	case http.StatusForbidden:
+		if d.there(ctx, d.url(folder)) {
+			return map[string]string{}, nil
+		}
+		return nil, d.forbidden(ctx)
 	}
 	if res.StatusCode != http.StatusMultiStatus {
 		return nil, fmt.Errorf("listing %s/%s on the WebDAV server: HTTP %d", folder, usageFolder, res.StatusCode)
