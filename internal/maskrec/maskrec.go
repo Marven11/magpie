@@ -442,16 +442,17 @@ func (f Filter) takes(r Record) bool {
 }
 
 // List is up to limit records before key (0: the latest), newest first,
-// that f takes, and whether there are more.
+// that f takes, and whether there are more. The days on disk are read with
+// no lock held: Hold, on a request's way, takes store.mu, and a day's file
+// can be tens of megabytes.
 func List(before int64, limit int, f Filter) ([]Record, bool) {
-	store.mu.Lock()
-	defer store.mu.Unlock()
 	if limit <= 0 {
 		limit = 50
 	}
 	var out []Record
+	more := false
 	fs := files(Dir())
-	for i := len(fs) - 1; i >= 0; i-- {
+	for i := len(fs) - 1; i >= 0 && !more; i-- {
 		if before > 0 && time.Unix(0, before).Local().Format(dayForm) < fs[i].day {
 			continue
 		}
@@ -467,24 +468,34 @@ func List(before int64, limit int, f Filter) ([]Record, bool) {
 		slices.SortStableFunc(day, func(a, b Record) int { return cmp.Compare(a.Key, b.Key) })
 		for j := len(day) - 1; j >= 0; j-- {
 			if len(out) == limit {
-				return out, true
+				more = true
+				break
 			}
-			out = append(out, withSnips(day[j]))
+			out = append(out, day[j])
 		}
 	}
-	if inTest() {
+	if inTest() && !more {
 		// nothing on disk: the records in memory
-		for j := len(store.snips) - 1; j >= 0; j-- {
-			r := store.snips[j]
+		store.mu.Lock()
+		snips := append([]Record{}, store.snips...)
+		store.mu.Unlock()
+		for j := len(snips) - 1; j >= 0; j-- {
+			r := snips[j]
 			if (before == 0 || r.Key < before) && f.takes(r) {
 				if len(out) == limit {
-					return out, true
+					more = true
+					break
 				}
 				out = append(out, r)
 			}
 		}
 	}
-	return out, false
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	for i := range out {
+		out[i] = withSnips(out[i])
+	}
+	return out, more
 }
 
 // Get is the record of key, with its snips while memory has them.

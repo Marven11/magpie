@@ -73,20 +73,32 @@ func addTo(m map[string]map[string]int, name string, v Value) {
 	m[name][v.Placeholder] += v.N
 }
 
-// day is the sum of path, read again only when it has changed size.
+// day is the sum of path, read again only when it has changed size. Its size
+// is looked at and its file parsed with no lock held: Hold, on a request's
+// way, takes store.mu, and a day's file can be tens of megabytes.
 func day(path string) *dayAgg {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return newDay()
 	}
-	if store.days == nil {
-		store.days = map[string]*dayAgg{}
-	}
-	if a := store.days[path]; a != nil && a.size == fi.Size() {
-		return a
+	store.mu.Lock()
+	cached := store.days[path]
+	store.mu.Unlock()
+	if cached != nil && cached.size == fi.Size() {
+		return cached
 	}
 	a := newDay()
 	a.size = read(path, a.add)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	// a record written to the day while this read it is the one settle
+	// counted, in the cache that is there now
+	if cur := store.days[path]; cur != nil && cur != cached && cur.size > a.size {
+		return cur
+	}
+	if store.days == nil {
+		store.days = map[string]*dayAgg{}
+	}
 	store.days[path] = a
 	return a
 }
@@ -139,8 +151,6 @@ const topValues = 60
 
 // Sum is the summary of the days days up to today.
 func Sum(days int) Summary {
-	store.mu.Lock()
-	defer store.mu.Unlock()
 	if days <= 0 {
 		days = 7
 	}
@@ -260,8 +270,11 @@ func ranked(cs []Count) []Count {
 // memDay is day d of the records in memory, for a test binary that writes
 // none to disk.
 func memDay(d string) *dayAgg {
+	store.mu.Lock()
+	snips := append([]Record{}, store.snips...)
+	store.mu.Unlock()
 	a := newDay()
-	for _, r := range store.snips {
+	for _, r := range snips {
 		if r.Time.Local().Format(dayForm) == d {
 			r.Snips = nil
 			a.add(r)
