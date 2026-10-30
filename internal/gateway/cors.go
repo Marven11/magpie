@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/yetone/magpie/internal/access"
 	"github.com/yetone/magpie/internal/provider"
@@ -201,11 +202,32 @@ func corsAllowed(origin string) bool {
 	if len(saved) == 0 {
 		return false
 	}
-	// as saved from Settings, or as written into settings.json by hand
-	list, _ := settings.CleanOrigins(saved)
 	o, err := settings.CleanOrigins([]string{origin})
-	return err == nil && len(o) == 1 && slices.Contains(list, o[0])
+	if err != nil || len(o) != 1 {
+		return false
+	}
+	// as saved from Settings, or as written into settings.json by hand:
+	// an entry that doesn't read is skipped and logged once, as the IP
+	// list skips a mistyped one, so a handwritten line doesn't take the
+	// whole list away
+	for _, raw := range saved {
+		list, err := settings.CleanOrigins([]string{raw})
+		if err != nil {
+			if _, done := warnedOrigin.LoadOrStore(raw, true); !done {
+				log.Printf("corsOrigins: %v; it lets no page in", err)
+			}
+			continue
+		}
+		if slices.Contains(list, o[0]) {
+			return true
+		}
+	}
+	return false
 }
+
+// warnedOrigin is the origins already logged as unreadable, so one typo is
+// said once rather than on every request.
+var warnedOrigin sync.Map
 
 // corsHeaders is a preflight's Access-Control-Request-Headers as the
 // answer allows them: the header names asked for, nothing else.

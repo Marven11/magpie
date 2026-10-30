@@ -123,6 +123,33 @@ func TestCORSOrigins(t *testing.T) {
 // On the real server lanGuard sits in front of Handler and, for a gateway
 // key sent from this computer, records who called and puts magpie's own
 // token in the key's place; a listed page's keyed call is still answered.
+// A settings.json written by hand: an entry that doesn't read is skipped and
+// logged, as the IP list skips a mistyped one, rather than taken away with
+// the whole list — CleanOrigins refuses the lot, and corsAllowed dropped its
+// error, so one handwritten line switched CORS off for the origins listed
+// beside it (a page then got no headers at all, or a 403 telling the user to
+// list it, which they had).
+func TestCORSOriginsSurviveAHandwrittenOne(t *testing.T) {
+	fresh(t)
+	s := settings.Load()
+	s.CORSOrigins = []string{"http://localhost:3000", "app.example.com", "*", "https://app.example.com"}
+	if err := settings.Save(s); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		origin string
+		ok     bool
+	}{
+		{"http://localhost:3000", true},
+		{"https://app.example.com", true},
+		{"https://other.example.com", false},
+	} {
+		if got := corsAllowed(c.origin); got != c.ok {
+			t.Errorf("corsAllowed(%q) = %v, want %v", c.origin, got, c.ok)
+		}
+	}
+}
+
 func TestCORSKeyThroughTheServer(t *testing.T) {
 	fresh(t)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
