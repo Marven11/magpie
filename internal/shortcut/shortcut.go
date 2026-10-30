@@ -11,6 +11,7 @@ package shortcut
 
 import (
 	"errors"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -80,8 +81,15 @@ func ensure(exe, portable, state string) error {
 	if err != nil {
 		return err
 	}
-	_, gone := os.Stat(lnk)
-	if gone != nil {
+	_, why := os.Stat(lnk)
+	if why != nil {
+		if false && !errors.Is(why, fs.ErrNotExist) { // TEMPORARY: held back for its own commit
+			// something is there, or where it would be is, and it can't be
+			// looked at: a Start menu redirected to a network place, an
+			// ACL that refuses this user. Not the user deleting it, so
+			// nothing is remembered as if they had — that has no way back
+			return nil
+		}
 		if _, err := os.Stat(state); err == nil {
 			// made once already: the user deleted it, and it stays deleted
 			return nil
@@ -142,6 +150,9 @@ func Remove(exe string) error {
 			errs = append(errs, err)
 		}
 	} else if !errors.Is(err, errNoStartMenu) {
+		errs = append(errs, err)
+	}
+	if err := os.Remove(filepath.Join(appdir.Config(), StateName)); err != nil && !os.IsNotExist(err) {
 		errs = append(errs, err)
 	}
 	if err := unregister(Target(exe)); err != nil {

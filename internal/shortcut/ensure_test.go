@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/yetone/magpie/internal/appdir"
 )
 
 // fakeSystem is a Start menu in a temp folder: writeLink makes the file and
@@ -110,8 +112,16 @@ func TestEnsurePortable(t *testing.T) {
 // out, for the exe in place of one an update moved aside.
 func TestRemove(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "cfg")) // the record Remove takes out lives there
 	lnk := filepath.Join(dir, "Magpie.lnk")
 	if err := os.WriteFile(lnk, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(appdir.Config(), StateName)
+	if err := os.MkdirAll(appdir.Config(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(state, []byte(`C:\Tools\magpie.exe`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	oldMenu, oldUn := startMenu, unregister
@@ -124,6 +134,9 @@ func TestRemove(t *testing.T) {
 	}
 	if _, err := os.Stat(lnk); !os.IsNotExist(err) {
 		t.Error("the shortcut is still there")
+	}
+	if exists(state) {
+		t.Error("the record of having made the shortcut is still there: a magpie installed again would never make one")
 	}
 	if asked != `C:\Tools\magpie.exe` {
 		t.Errorf("App Paths asked for %q", asked)
