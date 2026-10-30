@@ -42,6 +42,13 @@ func FetchGemini(ctx context.Context, base, key string, headers map[string]strin
 			break
 		}
 	}
+	// a list still paging after 20 pages is not a list: taking the pages as
+	// the whole one makes the models it left out look withdrawn, and
+	// Refetch drops what the user picked of them (Paged, live.go, says the
+	// same of the same shape)
+	if token != "" {
+		return nil, at, fmt.Errorf("%s: still paging after %d pages", at, 20)
+	}
 	if len(out) == 0 {
 		return nil, at, errors.New(at + ": no models listed")
 	}
