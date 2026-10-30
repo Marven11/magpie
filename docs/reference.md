@@ -3103,7 +3103,9 @@ the skills with their files, templates and other binaries included (a file
 over 16 MB is left out, and so are the biggest once the skills' files come to
 32 MB; restoring keeps the copy of such a file the other machine already
 has). Without keys, a
-server's environment variables and headers that look like a key go empty.
+server's environment variables and headers that look like a key go empty,
+and so does a provider's extra body field whose name looks like one, at any
+depth.
 Gateway credentials, their names, ids and disabled state travel encrypted
 with Settings too. Restoring Settings replaces the gateway-key store with
 the backed-up one. `--no-keys` leaves gateway credentials and their legacy

@@ -190,6 +190,47 @@ func TestNoKeys(t *testing.T) {
 	}
 }
 
+// A provider's extraBody is where a header would be (ExtraBody's own doc: a
+// field written into the body of every request), so a backup without keys
+// must not carry a key in it — at any depth, as a plugin's options don't.
+func TestNoKeysLeavesNoSecretInTheBody(t *testing.T) {
+	home(t)
+	if err := provider.Save(provider.Provider{ID: "acme", Name: "Acme", Chat: "https://acme.example.com/v1", Key: "sk-acme",
+		ExtraBody: map[string]json.RawMessage{
+			"api_key":          json.RawMessage(`"body-secret"`),
+			"prompt_cache_key": json.RawMessage(`"also-a-key-by-name"`),
+			"user":             json.RawMessage(`"kept"`),
+			"metadata":         json.RawMessage(`{"tenant":"a","access_token":"t0k"}`),
+			"nested":           json.RawMessage(`[{"client_secret":"s"},{"keep":"me"}]`),
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := Collect(false, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Providers) != 1 {
+		t.Fatalf("providers: %d", len(b.Providers))
+	}
+	body := b.Providers[0].ExtraBody
+	if _, ok := body["api_key"]; ok {
+		t.Errorf("api_key carried: %s", body["api_key"])
+	}
+	if _, ok := body["prompt_cache_key"]; ok {
+		t.Errorf("prompt_cache_key carried: %s", body["prompt_cache_key"])
+	}
+	if string(body["user"]) != `"kept"` {
+		t.Errorf("a field whose name isn't a key's went: %s", body["user"])
+	}
+	if got := string(body["metadata"]); strings.Contains(got, "t0k") || !strings.Contains(got, `"tenant":"a"`) {
+		t.Errorf("metadata: %s, want its access_token gone and its tenant kept", got)
+	}
+	if got := string(body["nested"]); strings.Contains(got, `"client_secret"`) || !strings.Contains(got, `"keep":"me"`) {
+		t.Errorf("nested: %s, want its client_secret gone and its keep kept", got)
+	}
+}
+
 func TestOTelBackupHeaders(t *testing.T) {
 	home(t)
 	config := settings.OTel{Enabled: true, Metrics: true, Endpoint: "https://collector.example.com", Headers: map[string]string{"Authorization": "Basic test-secret", "X-Custom": "custom-secret"}}

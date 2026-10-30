@@ -259,7 +259,55 @@ func withoutKeys(p provider.Provider) provider.Provider {
 		}
 		p.Headers = h
 	}
+	p.ExtraBody = withoutSecretBody(p.ExtraBody)
 	return p
+}
+
+// withoutSecretBody is ExtraBody without the fields whose names look like a
+// key, at any depth: a body field is where a header would be (ExtraBody's own
+// doc: an api_key written into the body of every request), so a copy without
+// keys must not carry one. A field holding JSON that can't be read is left
+// out whole: nothing says what it holds.
+func withoutSecretBody(in map[string]json.RawMessage) map[string]json.RawMessage {
+	var strip func(v any) any
+	strip = func(v any) any {
+		switch x := v.(type) {
+		case map[string]any:
+			out := map[string]any{}
+			for k, v := range x {
+				if !Secret(k) {
+					out[k] = strip(v)
+				}
+			}
+			return out
+		case []any:
+			out := make([]any, len(x))
+			for i, v := range x {
+				out[i] = strip(v)
+			}
+			return out
+		}
+		return v
+	}
+	var out map[string]json.RawMessage
+	for k, raw := range in {
+		if Secret(k) {
+			continue
+		}
+		var v any
+		if err := json.Unmarshal(raw, &v); err != nil {
+			continue
+		}
+		b, err := json.Marshal(strip(v))
+		if err != nil {
+			continue
+		}
+		if out == nil {
+			out = map[string]json.RawMessage{}
+		}
+		out[k] = b
+	}
+	return out
 }
 
 // Seal encrypts the bundle under the passphrase.
