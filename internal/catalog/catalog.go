@@ -24,6 +24,7 @@ import (
 
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/filememo"
+	"github.com/yetone/magpie/internal/steady"
 )
 
 // Model is one entry the picker can offer.
@@ -539,6 +540,11 @@ var (
 	// while a call is pricing its model
 	loadMu sync.Mutex
 	loaded bool
+	// failedAt is the CachePath stat a load found nothing to read with: a
+	// catalog written over (truncated mid-write, or left so by a process
+	// killed) stayed "no catalog" for the whole process, which priced every
+	// model at nothing and listed nothing, until it changed again
+	failedAt string
 	// built are Provider's lists of this load, by provider: dsh's wiring
 	// asks for them every 30 seconds, and each built every model again.
 	// gen counts Resets, so a list built from an older load isn't kept.
@@ -613,7 +619,7 @@ func load() map[string]mdProvider {
 func loadGen() (map[string]mdProvider, int) {
 	loadMu.Lock()
 	defer loadMu.Unlock()
-	if !loaded {
+	if !loaded || failedAt != currentStat() {
 		loaded = true
 		func() {
 			for _, p := range []string{CachePath(), opencodeCache()} {
@@ -775,8 +781,24 @@ func loadGen() (map[string]mdProvider, int) {
 				}
 			}
 		}()
+		// nothing was read: look again when the file differs, rather than
+		// going without a catalog for the whole process
+		failedAt = ""
+		if mdev == nil {
+			failedAt = currentStat()
+		}
 	}
 	return mdev, gen
+}
+
+// currentStat is the cache file as it is now, for telling a file that was
+// read and held nothing from the same file written again.
+func currentStat() string {
+	fi, err := os.Stat(CachePath())
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d", fi.Size(), fi.ModTime().UnixNano())
 }
 
 // Reset forgets the loaded catalog so the next call re-reads the cache,
@@ -842,7 +864,7 @@ func syncLock(ctx context.Context, onlyIfMissing bool) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(p, b, 0o644); err != nil {
+	if err := steady.WriteFile(p, b, 0o644); err != nil {
 		return err
 	}
 	// the lab catalog beside it is best effort: without it the provider
