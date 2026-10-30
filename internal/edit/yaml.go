@@ -392,6 +392,12 @@ func parseYAMLDocuments(raw []byte) (root *yaml.Node, nextLine int, err error) {
 	if doc.HeadComment != "" && root.HeadComment == "" {
 		root.HeadComment = doc.HeadComment
 	}
+	// and so do the ones after the last key, past a blank line: yaml.v3 hangs
+	// them on the document, and writing the root alone left them out of
+	// every edit ("comments are left as they are" was not true of them)
+	if doc.FootComment != "" && root.FootComment == "" {
+		root.FootComment = doc.FootComment
+	}
 	return root, nextLine, nil
 }
 

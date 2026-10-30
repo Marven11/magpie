@@ -3,6 +3,7 @@ package edit
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -53,5 +54,27 @@ func TestYAMLTopTypedValues(t *testing.T) {
 	}
 	if m["enabled"] != true || m["count"] != 123 {
 		t.Fatalf("types changed: %#v", m)
+	}
+}
+
+// A comment after the last key, past a blank line, is the document's own
+// (yaml.v3 keeps it in DocumentNode.FootComment): it went with every SetYAML
+// and DelYAML, though the package's doc says comments are left as they are.
+func TestYAMLKeepsTheDocumentFootComment(t *testing.T) {
+	for name, c := range map[string]struct{ in, want string }{
+		"past a blank line":    {"a: 1\n\n# trailing note\n", "# trailing note"},
+		"an indented document": {"a:\n  b: 1\n\n# foot\n", "# foot"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := tmpFile(t, "config.yaml", c.in)
+			if err := SetYAML(p, KV{"a.z", "z"}); err != nil {
+				t.Fatal(err)
+			}
+			if got := read(t, p); !strings.Contains(got, c.want) {
+				t.Fatalf("the document's comment went:\n%s", got)
+			} else if v, ok := GetYAML(p, "a.z"); !ok || v != "z" {
+				t.Fatalf("the write: %q %v\n%s", v, ok, read(t, p))
+			}
+		})
 	}
 }
