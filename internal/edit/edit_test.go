@@ -3,6 +3,7 @@ package edit
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,6 +75,25 @@ func TestJSONInsertNestedCreatesParents(t *testing.T) {
 	want := "{\n  \"models\": {\n    \"large\": {\n      \"model\": \"x\"\n    }\n  },\n  \"ui\": {}\n}\n"
 	if got := read(t, p); got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// A list isn't a mapping to put a key in: writing one over it threw away what
+// it held, though the code's own comment said a scalar is what it replaces.
+// A list is the user's data, not a shape magpie may flatten.
+func TestJSONListParentIsRefused(t *testing.T) {
+	const in = "{\n  \"a\": [1, 2],\n  \"k\": \"v\"\n}\n"
+	p := tmpFile(t, "settings.json", in)
+	if err := SetJSON(p, KV{Path: "a.b", Value: 1}); err == nil || !strings.Contains(err.Error(), "list") {
+		t.Fatalf("a.b under a list: %v, want an error", err)
+	}
+	if got := read(t, p); got != in {
+		t.Fatalf("the file changed:\n%s", got)
+	}
+	// a single-element list and a list of objects are the same thing to it
+	p = tmpFile(t, "settings.json", "{\n  \"a\": [{\"b\": 1}]\n}\n")
+	if err := SetJSON(p, KV{Path: "a.b", Value: 2}); err == nil {
+		t.Fatal("a list of objects took a key as its own")
 	}
 }
 
