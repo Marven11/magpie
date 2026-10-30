@@ -1160,9 +1160,10 @@ func costCurrency() (string, float64) {
 	costCncy = settings.Load().Currency
 	costRateVal = 0
 	if costCncy == "cny" {
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		costRateVal = fx.Get(ctx).CNYPerUSD
-		cancel()
+		// Soon, not Get: this is on View's way, and Get waits on the network
+		// for up to 4s when the rate is stale (#541 was that wait in the GUI,
+		// which asks this same question through Soon)
+		costRateVal = fx.Soon().CNYPerUSD
 	}
 	costAt = time.Now()
 	return costCncy, costRateVal
