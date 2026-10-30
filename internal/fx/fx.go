@@ -102,10 +102,6 @@ func getAt(ctx context.Context, path string) Rate {
 
 	if !recent {
 		r, err := fetchLive(ctx)
-		// a fetch begun for another home (a test's, gone) tells this one nothing
-		if CachePath() != path {
-			return Rate{CNYPerUSD: Fallback}
-		}
 		if err == nil {
 			writeCache(path, r)
 			mu.Lock()
