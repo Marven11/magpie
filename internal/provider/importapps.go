@@ -720,14 +720,14 @@ func ccSwitchEntry(e ccEntry) (name, key string, eps endpoints, models []string,
 	case "codex":
 		key = str(mapOf(s["auth"]), "OPENAI_API_KEY")
 		cfg, _ := s["config"].(string)
-		top, tables := parseTOML(cfg)
-		mp := tables["model_providers."+top["model_provider"]]
-		if top["model_provider"] != "" && mp == nil {
-			mp = tables[`model_providers."`+top["model_provider"]+`"`]
+		parsed, err := parseCodexConfig([]byte(cfg))
+		if err != nil {
+			return name, "", eps, nil, "its config.toml can't be read: " + err.Error()
 		}
-		base := mp["base_url"]
+		mp := parsed.ModelProviders[parsed.ModelProvider]
+		base := mp.BaseURL
 		if key == "" {
-			key = mp["experimental_bearer_token"]
+			key = mp.BearerToken
 		}
 		if base == "" && key == "" {
 			return name, "", eps, nil, "it is the agent's own sign-in; add the subscription in magpie"
@@ -735,12 +735,12 @@ func ccSwitchEntry(e ccEntry) (name, key string, eps endpoints, models []string,
 		if base == "" {
 			base = "https://api.openai.com/v1"
 		}
-		if mp["wire_api"] == "chat" {
+		if mp.WireAPI == "chat" {
 			eps.chat = base
 		} else {
 			eps.responses = base
 		}
-		if m := top["model"]; m != "" {
+		if m := parsed.Model; m != "" {
 			models = append(models, m)
 		}
 	case "gemini":
@@ -821,40 +821,6 @@ func mapOf(v any) map[string]any {
 		return map[string]any{}
 	}
 	return m
-}
-
-// parseTOML reads the string values of a Codex config: top-level keys, and
-// each table's keys under its header.
-func parseTOML(s string) (map[string]string, map[string]map[string]string) {
-	top, tables := map[string]string{}, map[string]map[string]string{}
-	cur := top
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			name := strings.TrimSpace(strings.Trim(line, "[]"))
-			cur = map[string]string{}
-			tables[name] = cur
-			continue
-		}
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		v = strings.TrimSpace(v)
-		if i := strings.Index(v, " #"); i > 0 && !strings.HasPrefix(v, `"`) {
-			v = strings.TrimSpace(v[:i])
-		}
-		if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') {
-			if end := strings.LastIndexByte(v, v[0]); end > 0 {
-				v = v[1:end]
-			}
-		}
-		cur[strings.Trim(strings.TrimSpace(k), `"`)] = v
-	}
-	return top, tables
 }
 
 // ---- Alma ------------------------------------------------------------------

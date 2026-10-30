@@ -1647,9 +1647,12 @@ The app's Import from other apps dialog can copy providers from Claude Code's
 `settings.json` (`CLAUDE_CONFIG_DIR` when set) and Codex's `config.toml`
 (`CODEX_HOME` when set) into magpie. Codex imports custom
 `[model_providers.*]` entries with an inline `experimental_bearer_token`,
-including fixed headers for custom providers in
-`[model_providers.*.http_headers]` and models from
-`[profiles.*]` or `model_catalog_json`. Review the entries before importing;
+including fixed headers for custom providers, written inline on the entry or in
+`[model_providers.*.http_headers]`, and models from
+`[profiles.*]` or `model_catalog_json`. The file is read by TOML's parser, so a
+value is what TOML says it is (an escape decoded, a multi-line string one
+string) and a file the parser refuses is reported as an error, never imported
+in part. Review the entries before importing;
 subsequent changes to agent settings are not automatically copied to magpie.
 Entries that point back to magpie or only name an `env_key` are skipped.
 

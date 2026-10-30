@@ -270,6 +270,45 @@ model_catalog_json = "magpie-models.json"
 	}
 }
 
+// Codex's config in the forms TOML has for what the test above writes as
+// tables: http_headers inline on the provider's own table, a provider header
+// spelled inside a multi-line string, and an escaped quote in a token. Read
+// by TOML's parser, the inline headers come along, the string stays text, and
+// the token is the string the file spells.
+func TestImportCodexConfigTOMLForms(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	data := `model_provider = "relay"
+developer_instructions = """
+[model_providers.ghost]
+base_url = "https://ghost.example.com/v1"
+experimental_bearer_token = "sk-ghost"
+"""
+
+[model_providers.relay]
+name = "Relay"
+base_url = "https://relay.example.com/v1"
+experimental_bearer_token = "sk-\"quoted\""
+http_headers = { "X-Relay-Key" = "abc", "X-Tenant" = "t1" }
+`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	items, err := readCodexConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Ref != "relay" {
+		t.Fatalf("providers: %+v", items)
+	}
+	p := items[0].Provider
+	if p.Key != `sk-"quoted"` {
+		t.Errorf("key %q, want the string the file spells", p.Key)
+	}
+	if p.Headers["X-Relay-Key"] != "abc" || p.Headers["X-Tenant"] != "t1" {
+		t.Errorf("inline http_headers: %v", p.Headers)
+	}
+}
+
 // One key for two Anthropic workspaces: the entry naming the other workspace
 // is a provider of its own, still the preset's, under the next free id.
 func TestImportPresetOtherHeaders(t *testing.T) {
