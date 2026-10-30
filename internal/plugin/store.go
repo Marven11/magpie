@@ -131,23 +131,29 @@ const authLockStale = 10 * time.Second
 // lockAuth takes plugin-auth.json.lock, which host.js takes too, for a
 // change to plugin-auth.json read afresh under it: two hosts (one being
 // restarted) and magpie never write each other's accounts away. It gives
-// the unlock.
-func lockAuth() func() {
+// the unlock, or the reason it has none: a folder it can't write in leaves
+// nothing to wait for, and ctx bounds the wait — without one, a lock a host
+// died holding takes a caller that can't delete it with it, forever.
+func lockAuth(ctx context.Context) (func(), error) {
 	lock := AuthPath() + ".lock"
 	start := time.Now()
 	for {
 		f, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
 			f.Close()
-			return func() { os.Remove(lock) }
+			return func() { os.Remove(lock) }, nil
 		}
 		if !os.IsExist(err) && !os.IsPermission(err) {
-			return func() {} // no folder to lock in: no file to change either
+			return func() {}, nil // no folder to lock in: no file to change either
 		}
 		if fi, err := os.Stat(lock); err == nil && time.Since(fi.ModTime()) > authLockStale || time.Since(start) > 2*authLockStale {
 			os.Remove(lock)
 		}
-		time.Sleep(5 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("plugin-auth.json is locked by %s and can't be taken: %w", lock, context.Cause(ctx))
+		case <-time.After(5 * time.Millisecond):
+		}
 	}
 }
 
