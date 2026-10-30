@@ -8,16 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"mime"
 	"net/http"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/yetone/magpie/internal/backup"
+	nethtml "golang.org/x/net/html"
 )
 
 // ServerFile is what the server held, or answered with, where the backup
@@ -128,10 +127,71 @@ func described(c Config, data []byte, err error) error {
 	return &notBackup{f: whatIs(data), where: fileWhere(c), cmd: cmdOf(c), err: err}
 }
 
-var titleRe = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-var rootRe = regexp.MustCompile(`<([A-Za-z_][\w.:-]*)`)
-
 // whatIs tells what a body that isn't a backup is, from its bytes alone.
+// pageTitle is the page's <title>, as a browser reads it: the HTML tokenizer
+// skips a comment and a script's text, which a regex over the bytes took for
+// the title when they held one (<!-- <title>404</title> --> above the real
+// one, or a string in a script), and an attribute holding ">" (titleRe's
+// [^>]* stopped inside it).
+func pageTitle(b []byte) string {
+	z := nethtml.NewTokenizer(bytes.NewReader(b))
+	in := false
+	for {
+		switch z.Next() {
+		case nethtml.ErrorToken:
+			return ""
+		case nethtml.StartTagToken:
+			name, _ := z.TagName()
+			in = string(name) == "title"
+		case nethtml.TextToken:
+			if in {
+				// the tokenizer unescapes what it returns
+				return clip(strings.Join(strings.Fields(string(z.Text())), " "), 80)
+			}
+		case nethtml.EndTagToken:
+			in = false
+		}
+	}
+}
+
+// xmlRoot is the name of the XML document's first element, as it is written,
+// prefix and all (SabreDAV answers <d:error>): a comment, the declaration, a
+// doctype and a CDATA section are skipped, which rootRe took for the root
+// (<!-- <x> --><AccessDenied> read as x).
+func xmlRoot(b []byte) string {
+	for i := 0; i < len(b); {
+		if b[i] != '<' {
+			i++
+			continue
+		}
+		rest := b[i:]
+		var skip []byte
+		switch {
+		case bytes.HasPrefix(rest, []byte("<!--")):
+			skip = []byte("-->")
+		case bytes.HasPrefix(rest, []byte("<?")):
+			skip = []byte("?>")
+		case bytes.HasPrefix(rest, []byte("<!")), bytes.HasPrefix(rest, []byte("</")):
+			skip = []byte(">")
+		}
+		if skip != nil {
+			j := bytes.Index(rest, skip)
+			if j < 0 {
+				return ""
+			}
+			i += j + len(skip)
+			continue
+		}
+		j := 1
+		for j < len(rest) && (rest[j] == '_' || rest[j] == ':' || rest[j] == '.' || rest[j] == '-' ||
+			rest[j] >= 'a' && rest[j] <= 'z' || rest[j] >= 'A' && rest[j] <= 'Z' || rest[j] >= '0' && rest[j] <= '9') {
+			j++
+		}
+		return clip(string(rest[1:j]), 40)
+	}
+	return ""
+}
+
 func whatIs(data []byte) ServerFile {
 	f := ServerFile{Size: len(data), Replace: true}
 	trim := bytes.TrimSpace(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")))
@@ -144,20 +204,10 @@ func whatIs(data []byte) ServerFile {
 	case strings.HasPrefix(head, "<") && (strings.Contains(head, "<html") ||
 		strings.HasPrefix(http.DetectContentType(trim), "text/html")):
 		f.What, f.Replace = "page", false
-		if m := titleRe.FindSubmatch(trim[:min(len(trim), 64<<10)]); m != nil {
-			f.Title = clip(strings.Join(strings.Fields(html.UnescapeString(string(m[1]))), " "), 80)
-		}
+		f.Title = pageTitle(trim[:min(len(trim), 64<<10)])
 	case strings.HasPrefix(head, "<?xml") || strings.HasPrefix(head, "<"):
 		f.What, f.Replace = "xml", false
-		body := trim
-		if strings.HasPrefix(head, "<?xml") {
-			if i := bytes.Index(body, []byte("?>")); i >= 0 {
-				body = body[i+2:]
-			}
-		}
-		if m := rootRe.FindSubmatch(body); m != nil {
-			f.Title = clip(string(m[1]), 40)
-		}
+		f.Title = xmlRoot(trim)
 	case json.Valid(trim):
 		var top struct {
 			Format any `json:"format"`

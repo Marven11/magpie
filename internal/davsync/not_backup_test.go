@@ -171,6 +171,18 @@ func TestServerAnswerSaid(t *testing.T) {
 		// /dav/ with its page
 		"alist web app": {answer{status: 200, ctype: "text/html", body: page("AList", `<div id="root"></div>`)},
 			[]string{`"AList"`, "WebDAV address"}, "page", false},
+		// a comment above the real title, a script holding one, an attribute
+		// with ">" in it: a browser reads <title>Sign in</title> out of each,
+		// and the regex over the bytes read the first <title>…</title> it found
+		"title behind a comment": {answer{status: 200, ctype: "text/html", body: []byte(`<html><head><!-- <title>404 Not Found</title> --><title>Sign in · Cloudflare</title></head></html>`)},
+			[]string{`"Sign in · Cloudflare"`}, "page", false},
+		"title behind a script": {answer{status: 200, ctype: "text/html", body: []byte(`<html><head><script>var t = "<title>loading</title>";</script><title>Sign in</title></head></html>`)},
+			[]string{`"Sign in"`}, "page", false},
+		"title with > in an attribute": {answer{status: 200, ctype: "text/html", body: []byte(`<html><head><title data-name="a>b">Sign in</title></head></html>`)},
+			[]string{`"Sign in"`}, "page", false},
+		// a comment above the root element: x is not what was answered
+		"xml root behind a comment": {answer{status: 200, ctype: "application/xml", body: []byte(`<?xml version="1.0"?><!-- <x> --><AccessDenied><Code>AccessDenied</Code></AccessDenied>`)},
+			[]string{"XML document", "<AccessDenied>"}, "xml", false},
 		// rclone serve webdav (and a Synology's web station) list a
 		// folder as a page
 		"directory listing": {answer{status: 200, ctype: "text/html; charset=utf-8", body: []byte("<html><head><title>Directory listing of /magpie/magpie.magpie-backup/</title></head><body><a href=\"../\">../</a></body></html>")},
