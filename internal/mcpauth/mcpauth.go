@@ -416,7 +416,7 @@ func tokenRequest(ctx context.Context, r Record, form url.Values) (tokens, error
 	if r.AuthMethod != "client_secret_basic" {
 		form.Set("client_id", r.ClientID)
 	}
-	if r.AuthMethod == "client_secret_post" && r.Secret != "" {
+	if r.AuthMethod == "client_secret_post" {
 		form.Set("client_secret", r.Secret)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.TokenURL, strings.NewReader(form.Encode()))
