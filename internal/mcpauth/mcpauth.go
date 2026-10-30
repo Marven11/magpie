@@ -547,6 +547,26 @@ func getJSON(ctx context.Context, u string, v any) bool {
 
 const protocolVersion = "2025-06-18"
 
+// protectedResource is a protected resource metadata document (RFC 9728) and
+// authServer is an authorization server's (RFC 8414 or OpenID's), as much of
+// each as magpie reads: several are asked for, and each answer is read into
+// one of its own, so none of them lends a field to another.
+type protectedResource struct {
+	Resource             string   `json:"resource"`
+	AuthorizationServers []string `json:"authorization_servers"`
+	Scopes               []string `json:"scopes_supported"`
+}
+
+type authServer struct {
+	Issuer        string   `json:"issuer"`
+	Authorize     string   `json:"authorization_endpoint"`
+	Token         string   `json:"token_endpoint"`
+	Register      string   `json:"registration_endpoint"`
+	Challenges    []string `json:"code_challenge_methods_supported"`
+	AuthMethods   []string `json:"token_endpoint_auth_methods_supported"`
+	ScopesSupport []string `json:"scopes_supported"`
+}
+
 // discover finds how to sign in to the server at serverURL.
 func discover(ctx context.Context, serverURL string) (meta, error) {
 	su, err := url.Parse(serverURL)
@@ -573,11 +593,7 @@ func discover(ctx context.Context, serverURL string) (meta, error) {
 	}
 	metadataURL, scope := challenge(resp.Header)
 
-	var prm struct {
-		Resource             string   `json:"resource"`
-		AuthorizationServers []string `json:"authorization_servers"`
-		Scopes               []string `json:"scopes_supported"`
-	}
+	var prm protectedResource
 	var tries []string
 	if metadataURL != "" {
 		tries = append(tries, metadataURL)
@@ -588,8 +604,9 @@ func discover(ctx context.Context, serverURL string) (meta, error) {
 	tries = append(tries, origin(su)+"/.well-known/oauth-protected-resource")
 	found := false
 	for _, u := range tries {
-		if getJSON(ctx, u, &prm) && len(prm.AuthorizationServers) > 0 {
-			found = true
+		var doc protectedResource
+		if getJSON(ctx, u, &doc) && len(doc.AuthorizationServers) > 0 {
+			prm, found = doc, true
 			break
 		}
 	}
@@ -604,15 +621,7 @@ func discover(ctx context.Context, serverURL string) (meta, error) {
 			m.Scope = strings.Join(prm.Scopes, " ")
 		}
 	}
-	var as struct {
-		Issuer        string   `json:"issuer"`
-		Authorize     string   `json:"authorization_endpoint"`
-		Token         string   `json:"token_endpoint"`
-		Register      string   `json:"registration_endpoint"`
-		Challenges    []string `json:"code_challenge_methods_supported"`
-		AuthMethods   []string `json:"token_endpoint_auth_methods_supported"`
-		ScopesSupport []string `json:"scopes_supported"`
-	}
+	var as authServer
 	iu, err := url.Parse(issuer)
 	if err != nil || iu.Host == "" {
 		return meta{}, fmt.Errorf("the server names an authorization server that isn't a URL (%q)", issuer)
@@ -626,8 +635,9 @@ func discover(ctx context.Context, serverURL string) (meta, error) {
 	}
 	got := false
 	for _, u := range asTries {
-		if getJSON(ctx, u, &as) && as.Authorize != "" && as.Token != "" {
-			got = true
+		var doc authServer
+		if getJSON(ctx, u, &doc) && doc.Authorize != "" && doc.Token != "" {
+			as, got = doc, true
 			break
 		}
 	}
