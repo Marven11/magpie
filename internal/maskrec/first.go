@@ -60,9 +60,9 @@ func loadFirst() {
 func Fresh(r Record) []Value {
 	firstLoad.Lock()
 	store.mu.Lock()
-	read := store.firstRead
+	loaded := store.firstRead
 	store.mu.Unlock()
-	if !read {
+	if !loaded {
 		loadFirst()
 	}
 	firstLoad.Unlock()
