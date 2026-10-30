@@ -83,7 +83,7 @@ func ensure(exe, portable, state string) error {
 	}
 	_, why := os.Stat(lnk)
 	if why != nil {
-		if false && !errors.Is(why, fs.ErrNotExist) { // TEMPORARY: held back for its own commit
+		if !errors.Is(why, fs.ErrNotExist) {
 			// something is there, or where it would be is, and it can't be
 			// looked at: a Start menu redirected to a network place, an
 			// ACL that refuses this user. Not the user deleting it, so
