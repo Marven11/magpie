@@ -3548,7 +3548,10 @@ day's event then has the id, version and system only. Turn it all off in
 Settings → Privacy → Count me as a user, or with `DO_NOT_TRACK=1` or
 `MAGPIE_NO_STATS=1`. Builds from source never send it. The code is
 [internal/stats](../internal/stats/stats.go). Deleting `install-id` makes a
-new one at the next send. The [Privacy page](https://usemagpie.ai/docs/privacy)
+new one at the next send; one that holds something other than an id (a
+write cut short) is left as it is and the send says so, rather than
+replacing it with a new id and counting the computer as a new user. The
+[Privacy page](https://usemagpie.ai/docs/privacy)
 shows a whole batch and everything else magpie sends by itself.
 
 Partners are also counted where usemagpie.ai sees them, whatever these
@@ -3568,7 +3571,10 @@ authors picked. magpie fetches each through
 Cloudflare's address and never the user's. The worker sends only
 `Accept: image/*` and its own User-Agent, passes on a PNG, JPEG, GIF, WebP,
 ICO or SVG of at most 1 MB and refuses anything else, and counts and keeps
-nothing. The code is [internal/iconproxy](../internal/iconproxy/iconproxy.go)
+nothing. A picture on usemagpie.ai itself — that name, a name under it, or
+another case of either — is fetched as it is, never through the worker,
+which refuses to fetch its own site. The code is
+[internal/iconproxy](../internal/iconproxy/iconproxy.go)
 and `icon` in [site/worker.js](../site/worker.js).
 
 ## Community
