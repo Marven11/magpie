@@ -209,14 +209,43 @@ func stamp() string {
 			fmt.Fprint(&b, ":", fi.ModTime().UnixNano(), ":", fi.Size())
 		}
 	}
+	// and the modules those files import, which the last load read
+	compiled.Lock()
+	imports := append([]string(nil), compiled.files...)
+	compiled.Unlock()
+	for _, f := range imports {
+		b.WriteString("|" + f)
+		if fi, err := os.Stat(f); err == nil {
+			fmt.Fprint(&b, ":", fi.ModTime().UnixNano(), ":", fi.Size())
+		}
+	}
 	return b.String()
+}
+
+// compiled is the files the last load read besides the modules' entry files,
+// for stamp to look at too: a module bundled out of its entry and a file
+// beside it kept running the old one.
+var compiled struct {
+	sync.Mutex
+	files []string
 }
 
 func load(st string) *set {
 	s := &set{stamp: st, errs: map[string]string{}}
 	seen := map[string]string{}
+	var imports []string
+	defer func() {
+		compiled.Lock()
+		compiled.files = imports
+		compiled.Unlock()
+	}()
 	for _, f := range modules() {
-		a, err := Compile(f.e.Spec, f.file)
+		a, files, err := compile(f.e.Spec, f.file)
+		for _, file := range files {
+			if file != f.file && !slices.Contains(imports, file) {
+				imports = append(imports, file)
+			}
+		}
 		if err == nil && seen[a.Desc.ID] != "" {
 			err = fmt.Errorf("agent id %q is %s's too", a.Desc.ID, plugin.Name(seen[a.Desc.ID]))
 		}
@@ -234,20 +263,27 @@ func load(st string) *set {
 // Compile compiles the agent module in file, of the plugin spec, and
 // checks what its agent export says.
 func Compile(spec, file string) (*Agent, error) {
+	a, _, err := compile(spec, file)
+	return a, err
+}
+
+// compile is Compile and every file it read: the entry and the modules it
+// imports, so a change to one of those can be seen.
+func compile(spec, file string) (*Agent, []string, error) {
 	root := filepath.Dir(file)
 	if t := plugin.Target(spec); t != file {
 		root = t
 	}
-	mod, err := jsmod.Compile(root, file, "an agent plugin")
+	mod, files, err := jsmod.CompileFiles(root, file, "an agent plugin")
 	if err != nil {
-		return nil, err
+		return nil, files, err
 	}
 	a := &Agent{Spec: spec, File: file, rt: moejs.NewRuntime(moejs.Options{})}
 	if err := a.rt.SetGlobal("console", console(a)); err != nil {
-		return nil, err
+		return nil, files, err
 	}
 	if err := a.limit(loadLimit, func() error { return a.rt.Load(mod) }); err != nil {
-		return nil, err
+		return nil, files, err
 	}
 	v, ok := a.rt.Export("agent")
 	if !ok || !v.IsObject() {
@@ -256,13 +292,13 @@ func Compile(spec, file string) (*Agent, error) {
 		}
 	}
 	if !v.IsObject() {
-		return nil, errors.New("exports no agent object")
+		return nil, files, errors.New("exports no agent object")
 	}
 	if err := a.rt.Unmarshal(v, &a.Desc); err != nil {
-		return nil, fmt.Errorf("agent: %w", err)
+		return nil, files, fmt.Errorf("agent: %w", err)
 	}
 	if err := a.Desc.check(); err != nil {
-		return nil, err
+		return nil, files, err
 	}
 	for _, h := range [][]string{{"connect"}, {"default", "connect"}} {
 		if hk, err := mod.Hook(h[0], h[1:]...); err == nil {
@@ -275,9 +311,9 @@ func Compile(spec, file string) (*Agent, error) {
 	// connect only: with no model key, connect's keys are all magpie
 	// writes, so a module with neither would write nothing
 	if a.Desc.Model == "" && !a.has {
-		return nil, errors.New("agent.model names no key, and there is no connect to write the gateway: say one or both")
+		return nil, files, errors.New("agent.model names no key, and there is no connect to write the gateway: say one or both")
 	}
-	return a, nil
+	return a, files, nil
 }
 
 func (d *Desc) check() error {
