@@ -93,7 +93,15 @@ func TestCodexModelEffortLetsUnrelatedCallsGo(t *testing.T) {
 	// decodes into a lent buffer now (#2278), and took 74 KB or 289 KB as
 	// a pool kept it or not
 	rows := uint64(calls+1) * uint64(unsafe.Sizeof(packedRow{}))
+	// the least of a few builds: what one allocates turns on state this
+	// process leaves behind (the log's index kept by an earlier test, the
+	// buffers a pool still holds), which a bar on one measurement made a
+	// failure in a run of the whole package and not on its own (570688
+	// against 552184 — 6 bytes a call, where a packed row is 184)
 	build := measure(func() { CodexModelEffort(All) })
+	for range 2 {
+		build = min(build, measure(func() { CodexModelEffort(All) }))
+	}
 	t.Logf("a build allocated %d bytes, the log's rows are %d", build, rows)
 	// the thread's own rows and the sets of its ids, less than a packed
 	// row for each unrelated call
