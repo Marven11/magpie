@@ -16,7 +16,11 @@ clone a working tree or synchronize arbitrary files.
   blob SHA. A write always asks for the version it read, whichever the server
   tells one by: `If-Match` for an ETag, `If-Unmodified-Since` for a
   `Last-Modified` alone, and `If-None-Match: *` for a file that isn't there
-  yet, so two computers' first writes to one file can't both win. S3's
+  yet, so two computers' first writes to one file can't both win. A file
+  that is there with no version told — no ETag, and no `Last-Modified` a
+  second behind the server's own clock — is written over with no condition,
+  which marks the write blind, rather than asking for a file that isn't
+  there. S3's
   conditions (`If-Match`, `If-None-Match`) go outside the
   SigV4 signature ([`unsigned`](../../internal/davsync/s3.go)): a server that
   reads one back otherwise than it arrived refused the signed request with

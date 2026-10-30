@@ -38,6 +38,12 @@ var errNotModified = errors.New("the file on the server is unchanged")
 type version struct {
 	ETag     string `json:"etag,omitempty"`
 	Modified string `json:"modified,omitempty"`
+	// NoVersion: the file is there, and the server told nothing to write
+	// over — no ETag, and no Last-Modified a second before its own clock.
+	// A write holds to nothing then, as s3's does after its HEAD, and is
+	// told Blind; asking for a file that isn't there would be refused for
+	// good.
+	NoVersion bool `json:"-"`
 	// Blind: a put told it wrote without the server checking the version
 	// it went over (s3.go's HEAD then PUT, where conditional writes are
 	// refused): another computer's write in the moment between may have
@@ -57,11 +63,13 @@ func (v version) conditions() map[string]string {
 }
 
 // setWriteCondition asks the server to take the write only over v (RFC 9110):
-// If-Match for an ETag, If-Unmodified-Since for a Last-Modified alone, and
-// If-None-Match "*" for a file that isn't there yet. remote.put's contract is
-// this condition — without one, a server that tells only Last-Modified lost
-// one computer's write to another's, and two computers' first writes to one
-// empty file both won.
+// If-Match for an ETag, If-Unmodified-Since for a Last-Modified alone,
+// If-None-Match "*" for a file that isn't there yet, and nothing at all for
+// one that is there with no version to hold to. remote.put's contract is this
+// condition — without one, a server that tells only Last-Modified lost one
+// computer's write to another's, and two computers' first writes to one empty
+// file both won; with one for the wrong case, a file whose read told no
+// version was never written again (412, "another computer changed it").
 func setWriteCondition(h map[string]string, v version) {
 	clearWriteCondition(h)
 	switch {
@@ -69,6 +77,8 @@ func setWriteCondition(h map[string]string, v version) {
 		h["If-Match"] = v.ETag
 	case v.Modified != "":
 		h["If-Unmodified-Since"] = v.Modified
+	case v.NoVersion:
+		// the file is there and nothing was told: nothing to hold to
 	default:
 		h["If-None-Match"] = "*"
 	}
@@ -334,7 +344,18 @@ func (d *dav) get(ctx context.Context, have version) (data []byte, v version, er
 			return nil, version{}, &notBackup{f: f, where: "the file " + folder + "/" + file + " on the WebDAV server", cmd: "webdav", err: backup.ErrNotBackup}
 		}
 	}
-	return data, versionOf(res.Header), nil
+	return data, readVersion(res.Header), nil
+}
+
+// readVersion is versionOf for a file that is there: one it tells no version
+// for still says the file is there, so a write over it can't ask for a file
+// that isn't.
+func readVersion(h http.Header) version {
+	v := versionOf(h)
+	if v.ETag == "" && v.Modified == "" {
+		v.NoVersion = true
+	}
+	return v
 }
 
 // put writes the backup, only over the version read when there was one,
@@ -378,8 +399,11 @@ func (d *dav) put(ctx context.Context, data []byte, have version) (version, erro
 				return version{}, cerr
 			}
 			// an ETag said here is the version written; with none, the
-			// next sync reads the file in full, as before
-			return version{ETag: res.Header.Get("ETag")}, nil
+			// next sync reads the file in full, as before. A write that held
+			// to no version is told blind, so the next sync knows another
+			// computer's may have gone over it
+			v := version{ETag: res.Header.Get("ETag"), Blind: have.NoVersion}
+			return v, nil
 		case res.StatusCode == http.StatusPreconditionFailed:
 			return version{}, errChanged
 		case res.StatusCode == http.StatusForbidden && (try > 0 || d.there(ctx, d.url(folder)+"/")):

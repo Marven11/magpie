@@ -106,6 +106,78 @@ func TestDAVPutHoldsToTheVersionRead(t *testing.T) {
 	}
 }
 
+// A file that is there but whose read told no version — no ETag, and a
+// Last-Modified the server's own clock doesn't put a second behind (or no Date
+// at all, which a server or a proxy in front may leave out) — was written over
+// with If-None-Match: *, which asks for a file that isn't there: every write
+// after the first was refused 412 and said another computer had changed it,
+// with none. The write holds to nothing then, and says so (Blind).
+func TestDAVPutOverAFileWithNoVersion(t *testing.T) {
+	mu := sync.Mutex{}
+	file := []byte(nil)
+	conds := []map[string]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.Method {
+		case http.MethodGet:
+			if file == nil {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			// a Last-Modified with no Date: no version to write over
+			w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+			w.Write(file)
+		case http.MethodPut:
+			c := map[string]string{}
+			for _, h := range []string{"If-Match", "If-Unmodified-Since", "If-None-Match"} {
+				if v := r.Header.Get(h); v != "" {
+					c[h] = v
+				}
+			}
+			conds = append(conds, c)
+			if v, ok := c["If-None-Match"]; ok && v == "*" && file != nil {
+				w.WriteHeader(http.StatusPreconditionFailed)
+				return
+			}
+			b, _ := io.ReadAll(r.Body)
+			file = b
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+	d, err := newDAV(Config{URL: srv.URL + "/magpie", User: "me", Password: "pw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := d.put(ctx, []byte("first"), version{}); err != nil {
+		t.Fatalf("the first write: %v", err)
+	}
+	_, v, err := d.get(ctx, version{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.NoVersion {
+		t.Fatalf("the version read: %+v, want no version told", v)
+	}
+	got, err := d.put(ctx, []byte("second"), v)
+	if err != nil {
+		t.Fatalf("the write over a file with no version: %v", err)
+	}
+	if !got.Blind {
+		t.Errorf("the write isn't told blind: %+v", got)
+	}
+	if last := conds[len(conds)-1]; len(last) != 0 {
+		t.Errorf("the write went with %v, want no condition", last)
+	}
+	if string(file) != "second" {
+		t.Fatalf("the server holds %q", file)
+	}
+}
+
 // A 403 is told apart: a folder in the address that isn't on the server, one
 // the account may only read, and a server that won't say — not all of them a
 // wrong password, as they read before.
