@@ -3,9 +3,11 @@ package pii
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -273,6 +275,48 @@ func TestGuardLetGoWhenIdle(t *testing.T) {
 	}
 	if _, err := Of(AstrLinkGuard).Find(context.Background(), []string{"two"}); err != nil || loads.Load() != 2 {
 		t.Fatalf("err = %v, %d loads", err, loads.Load())
+	}
+}
+
+// The progress the Settings page shows is written by the downloader and read
+// by a goroutine ticking every 200ms, and the downloader goes on to the next
+// file: what the earlier files came to is read there while it is added to
+// here. Both hold the same number, so it is one they can read at once (-race
+// saw the write and the read of it unsynchronised).
+func TestGuardDownloadProgressIsRaceFree(t *testing.T) {
+	guardSandbox(t)
+	body := map[string][]byte{"/r/aaaabbbbcccc1/int8/model_int8.onnx": make([]byte, 64), "/r/aaaabbbbcccc1/int8/model_int8.onnx_data": make([]byte, 64)}
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, ok := body[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+		// slowly, so the 200ms tick lands while the files are being taken
+		for i := 0; i < len(b); i += 8 {
+			w.Write(b[i : i+8])
+			w.(http.Flusher).Flush()
+			time.Sleep(60 * time.Millisecond)
+		}
+	}))
+	defer s.Close()
+	wasRev := guardRev
+	defer func() { guardRev = wasRev }()
+	guardRev, guardBase = "aaaabbbbcccc1", s.URL+"/r/"
+	guardFiles = nil
+	for _, p := range []string{"int8/model_int8.onnx", "int8/model_int8.onnx_data"} {
+		b := body["/r/aaaabbbbcccc1/"+p]
+		guardFiles = append(guardFiles, pinned{p, int64(len(b)), sum(b)})
+	}
+	done := make(chan struct{})
+	if err := Of(AstrLinkGuard).Download(func() { close(done) }); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the download never finished")
 	}
 }
 

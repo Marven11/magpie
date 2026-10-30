@@ -75,7 +75,7 @@ func guardInstall(ctx context.Context) error {
 	if err := os.MkdirAll(guardDir(), 0o755); err != nil {
 		return err
 	}
-	var base int64
+	var base atomic.Int64
 	for _, f := range guardFiles {
 		path := filepath.Join(guardDir(), filepath.Base(f.path))
 		if fi, err := os.Stat(path); err != nil || fi.Size() != f.size {
@@ -89,7 +89,7 @@ func guardInstall(ctx context.Context) error {
 					case <-stop:
 						return
 					case <-t.C:
-						gdl.done.Store(base + n.Load())
+						gdl.done.Store(base.Load() + n.Load())
 					}
 				}
 			}()
@@ -99,8 +99,8 @@ func guardInstall(ctx context.Context) error {
 				return fmt.Errorf("downloading %s: %w", filepath.Base(f.path), err)
 			}
 		}
-		base += f.size
-		gdl.done.Store(base)
+		base.Add(f.size)
+		gdl.done.Store(base.Load())
 	}
 	removeOldGuard()
 	return nil
