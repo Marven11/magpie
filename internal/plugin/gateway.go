@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -238,7 +239,18 @@ func (r *GatewayRun) Finish(ctx context.Context, reply json.RawMessage, success 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 11*time.Second)
 		defer cancel()
-		_ = r.h.call(ctx, "gatewayRequest", params, nil)
+		if err := r.h.call(ctx, "gatewayRequest", params, nil); err != nil {
+			// the host keeps this run (and one of gatewayRuns' 128 names,
+			// for 15 minutes) until it is told the run is over: the close
+			// below is what says so when the reply itself couldn't be sent,
+			// as it couldn't when every RPC slot was held — the finish used
+			// to be dropped in silence, and enough of those took every name
+			// and stopped the hooks of every request from then on
+			log.Printf("plugin: a gateway run's reply wasn't handed to the plugins (%v); closing the run instead", err)
+			cctx, ccancel := context.WithTimeout(context.Background(), time.Second)
+			defer ccancel()
+			_ = r.h.call(cctx, "gatewayRequest", map[string]any{"operation": "close", "id": r.id, "token": r.token}, nil)
+		}
 	}()
 }
 
