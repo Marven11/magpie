@@ -499,6 +499,49 @@ func TestWebNotInstalled(t *testing.T) {
 	}
 }
 
+// The page's address and the certificate files read back from a launch agent
+// as magpie writes it, and from the same plist after a tool reformats it:
+// plutil -convert xml1 puts each element on a line of its own, which the read
+// asked to be adjacent and so found neither, and the next reinstall dropped
+// the page and TLS with it.
+func TestServiceFileReadBackReformatted(t *testing.T) {
+	args := []string{"serve", webFlag + "[fe80::1%en0]:3430"}
+	env := []string{webKeyVar + "=0123456789abcdef", "MAGPIE_TLS_CERT=/etc/a.pem", "MAGPIE_TLS_KEY=/etc/a.key"}
+	compact := plist("/opt/magpie", args, env)
+	reformatted := strings.ReplaceAll(compact, "><", ">\n\t<")
+	if !strings.Contains(reformatted, "</key>\n\t<string>") {
+		t.Fatalf("not the shape this is about:\n%s", reformatted)
+	}
+	for name, text := range map[string]string{"as written": compact, "reformatted": reformatted} {
+		if a, k := webOf(text); a != "[fe80::1%en0]:3430" || k != "0123456789abcdef" {
+			t.Errorf("%s: web %q %q", name, a, k)
+		}
+		if cert, key := tlsOf(text); cert != "/etc/a.pem" || key != "/etc/a.key" {
+			t.Errorf("%s: tls %q %q", name, cert, key)
+		}
+	}
+}
+
+// A unit's ExecStart is quoted by unitQuote, which writes % as %% (systemd's
+// own escape): the address read back is the one installed, so a reinstall
+// writes the same unit rather than one more % each time, which no address
+// binds.
+func TestServiceFileReadBackUnitEscapes(t *testing.T) {
+	env := []string{webKeyVar + "=0123456789abcdef", "MAGPIE_TLS_CERT=/etc/cert%1.pem", "MAGPIE_TLS_KEY=/etc/a.key"}
+	text := unitText("/opt/magpie", []string{"serve", webFlag + "[fe80::1%en0]:3430"}, env)
+	addr, key := webOf(text)
+	if addr != "[fe80::1%en0]:3430" || key != "0123456789abcdef" {
+		t.Fatalf("web %q %q", addr, key)
+	}
+	if cert, _ := tlsOf(text); cert != "/etc/cert%1.pem" {
+		t.Errorf("tls %q", cert)
+	}
+	again := unitText("/opt/magpie", serveArgs(Options{Web: addr, Key: key}), env)
+	if again != text {
+		t.Errorf("reinstall wrote another unit:\n%s\nwant:\n%s", again, text)
+	}
+}
+
 // install --tls-cert … --tls-key … writes the pair into the service, and
 // TLS reads it back through the unit's and the plist's quoting, so the
 // service installed again keeps it (paths with a space, % and & here).

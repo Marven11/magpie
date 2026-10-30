@@ -161,10 +161,15 @@ func Web() (addr, key string) {
 }
 
 var (
-	webArgRe = regexp.MustCompile(`(?:"|<string>)` + regexp.QuoteMeta(webFlag) + `([^"<\s]+)(?:"|</string>)`)
+	// a unit's ExecStart: "--web=…", quoted by unitQuote
+	unitWebArg = regexp.MustCompile(`"` + regexp.QuoteMeta(webFlag) + `([^"]*)"`)
+	// a launch agent's <string>--web=…</string>, as plist writes it and as a
+	// tool reformatting the file leaves it (<string> may follow its line)
+	plistWebArg = regexp.MustCompile(`<string>\s*` + regexp.QuoteMeta(webFlag) + `([^<]*)</string>`)
 	// a unit's Environment="MAGPIE_WEB_KEY=…", a plist's
-	// <key>MAGPIE_WEB_KEY</key><string>…</string>
-	webKeyRe = regexp.MustCompile(webKeyVar + `(?:=|</key><string>)([A-Za-z0-9._~-]+)`)
+	// <key>MAGPIE_WEB_KEY</key><string>…</string>, which a tool may put on
+	// the next line
+	webKeyRe = regexp.MustCompile(webKeyVar + `(?:=|</key>\s*<string>)([A-Za-z0-9._~-]+)`)
 )
 
 // TLS is the certificate and key files the installed service serves
@@ -190,8 +195,9 @@ func tlsOf(text string) (cert, key string) {
 		if m := regexp.MustCompile(`Environment="` + name + `=((?:[^"\\]|\\.)*)"`).FindStringSubmatch(text); m != nil {
 			return strings.NewReplacer(`\\`, `\`, `\"`, `"`, "%%", "%").Replace(m[1])
 		}
-		// a plist's <key>NAME</key><string>…</string>
-		if m := regexp.MustCompile(`<key>` + name + `</key><string>([^<]*)</string>`).FindStringSubmatch(text); m != nil {
+		// a plist's <key>NAME</key><string>…</string>, which a tool may put
+		// on the next line
+		if m := regexp.MustCompile(`<key>` + name + `</key>\s*<string>([^<]*)</string>`).FindStringSubmatch(text); m != nil {
 			return html.UnescapeString(m[1])
 		}
 		return ""
@@ -205,15 +211,20 @@ func tlsOf(text string) (cert, key string) {
 
 // webOf is Web from a unit's or a launch agent's text.
 func webOf(text string) (addr, key string) {
-	m := webArgRe.FindStringSubmatch(text)
-	if m == nil {
+	switch {
+	case unitWebArg.MatchString(text):
+		// unitQuote writes \, " and % escaped, and systemd reads them back
+		addr = strings.NewReplacer(`\\`, `\`, `\"`, `"`, "%%", "%").Replace(unitWebArg.FindStringSubmatch(text)[1])
+	case plistWebArg.MatchString(text):
+		addr = html.UnescapeString(plistWebArg.FindStringSubmatch(text)[1])
+	default:
 		return "", ""
 	}
 	k := webKeyRe.FindStringSubmatch(text)
 	if k == nil {
 		return "", ""
 	}
-	return html.UnescapeString(m[1]), k[1]
+	return addr, k[1]
 }
 
 // widenPath gives PATH, before it is written into the service, the
