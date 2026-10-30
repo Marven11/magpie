@@ -436,7 +436,7 @@ func (m *model) openProviderModels(id string) {
 		},
 	}
 	m.pk.refilter()
-	m.mode = modePick
+	m.mode, m.back = modePick, modeList
 }
 
 // kindNote is what a preset is, beside its name in the add list: another
@@ -510,7 +510,7 @@ func (m *model) openPresets() {
 		},
 	}
 	m.pk.refilter()
-	m.mode = modePick
+	m.mode, m.back = modePick, modeList
 }
 
 // customAPI is an API a provider of the user's own is asked on, as the
