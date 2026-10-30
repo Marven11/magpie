@@ -200,7 +200,7 @@ func (e *otelExporter) offer(item otelItem) {
 		for {
 			held := e.bytes.Load()
 			if n > otelQueueBytes-held {
-				e.dropped.Add(1) // telemetry must never wait for a slow collector, nor grow without bound
+				e.drop() // telemetry must never wait for a slow collector, nor grow without bound
 				return
 			}
 			if e.bytes.CompareAndSwap(held, held+n) {
@@ -214,7 +214,17 @@ func (e *otelExporter) offer(item otelItem) {
 		if n > 0 {
 			e.bytes.Add(-n)
 		}
-		e.dropped.Add(1) // telemetry must never wait for a slow collector
+		e.drop() // telemetry must never wait for a slow collector
+	}
+}
+
+// drop counts a span the queue couldn't take and says so the first time: the
+// count on its own is read by nothing outside the tests, so a collector that
+// stopped keeping up (a batch it times out on, a queue of whole bodies) left
+// spans missing with nothing anywhere saying so.
+func (e *otelExporter) drop() {
+	if e.dropped.Add(1) == 1 {
+		log.Printf("otel: %d bytes of spans queued already and the collector is behind; further spans are dropped until it catches up", otelQueueBytes)
 	}
 }
 

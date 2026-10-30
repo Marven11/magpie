@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -378,6 +379,31 @@ func TestOTelQueueBodiesBudget(t *testing.T) {
 }
 
 // Producers racing for the last bytes must reserve them atomically.
+// A span the queue can't take is said the first time: the count on its own is
+// read by nothing outside the tests, so a collector that stopped keeping up
+// left spans missing with nothing anywhere saying so.
+func TestOTelDroppedSpansAreSaid(t *testing.T) {
+	var buf strings.Builder
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	e := newOTelExporter()
+	defer e.cancel()
+	body := strings.Repeat("x", otelQueueBytes)
+	e.offer(otelItem{record: Record{BodyIn: body}})
+	for range 5 {
+		e.offer(otelItem{record: Record{BodyIn: "x"}})
+	}
+	if got := e.dropped.Load(); got != 5 {
+		t.Fatalf("dropped %d, want 5", got)
+	}
+	if n := strings.Count(buf.String(), "otel: "); n != 1 {
+		t.Fatalf("%d lines about it, want the first drop said once:\n%s", n, buf.String())
+	}
+	if !strings.Contains(buf.String(), "further spans are dropped") {
+		t.Fatalf("the line doesn't say spans are dropped:\n%s", buf.String())
+	}
+}
+
 func TestOTelQueueBodiesBudgetConcurrent(t *testing.T) {
 	body := strings.Repeat("x", 1<<10)
 	for range 100 {
