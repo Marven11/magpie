@@ -184,7 +184,7 @@ func lastRun(dirs ...string) time.Time {
 // local (%LOCALAPPDATA%): Packages\Claude_<publisher id>, or the Store's
 // Packages\AnthropicPBC.Claude_<publisher id> (Desktop 2.31226 knows both
 // families, Claude_pzs8sxrjxfjjc and AnthropicPBC.Claude_fnn82j28hfe8t),
-// the one Desktop has run in first, else the first there is. The publisher
+// the one Desktop has run in last, else the first there is. The publisher
 // id is not assumed: it is the one of whoever signed the package.
 func packageDir(local string) string {
 	var found []string
@@ -202,10 +202,17 @@ func packageDir(local string) string {
 		return ""
 	}
 	sort.Strings(dirs)
+	// the family that ran last is the one Desktop is installed as now: both
+	// families are known to 2.31226, and sorting their names picked the
+	// Store's whatever the other one was doing
+	newest, ran := "", time.Time{}
 	for _, d := range dirs {
-		if !lastRun(filepath.Join(d, "Roaming", "Claude"), filepath.Join(d, "Local", "Claude-3p")).IsZero() {
-			return d
+		if at := lastRun(filepath.Join(d, "Roaming", "Claude"), filepath.Join(d, "Local", "Claude-3p")); at.After(ran) {
+			newest, ran = d, at
 		}
+	}
+	if newest != "" {
+		return newest
 	}
 	return dirs[0]
 }

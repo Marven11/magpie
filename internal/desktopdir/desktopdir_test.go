@@ -58,6 +58,38 @@ func TestFindMSIX(t *testing.T) {
 	}
 }
 
+// Both package families installed and run — the Store's and the setup.exe's,
+// which Desktop 2.31226 both knows — the one that ran last is the one
+// installed now: the folders go into its package, and sorting the families'
+// names picked the Store's whatever the other was doing.
+func TestFindMSIXLastRunWins(t *testing.T) {
+	home := t.TempDir()
+	local, roaming := filepath.Join(home, "AppData", "Local"), filepath.Join(home, "AppData", "Roaming")
+	store := filepath.Join(local, "Packages", "AnthropicPBC.Claude_fnn82j28hfe8t", "LocalCache")
+	setup := filepath.Join(local, "Packages", "Claude_pzs8sxrjxfjjc", "LocalCache")
+	now := time.Now()
+	ran(t, filepath.Join(store, "Roaming", "Claude"), now.Add(-time.Hour))
+	ran(t, filepath.Join(setup, "Roaming", "Claude"), now)
+	os.MkdirAll(roaming, 0o755)
+	got := Find("windows", home, env(map[string]string{"LOCALAPPDATA": local, "APPDATA": roaming}))
+	if got.Package != setup {
+		t.Fatalf("package %s, want the one that ran last, %s", got.Package, setup)
+	}
+	if got.Data != filepath.Join(setup, "Roaming", "Claude") || got.Mode != filepath.Join(setup, "Local", "Claude") {
+		t.Fatalf("dirs: %+v", got)
+	}
+
+	// neither has run: the first there is, as before
+	for _, d := range []string{store, setup} {
+		if err := os.Remove(filepath.Join(d, "Roaming", "Claude", "Local State")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := Find("windows", home, env(map[string]string{"LOCALAPPDATA": local, "APPDATA": roaming})); got.Package != store {
+		t.Fatalf("neither ran: package %s, want %s", got.Package, store)
+	}
+}
+
 // The usual install (Squirrel: %APPDATA%\Claude, %LOCALAPPDATA%\Claude-3p)
 // keeps its folders, and so does a machine with no Desktop at all. An
 // %APPDATA%\Claude holding only claude_desktop_config.json (another tool's
