@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"time"
@@ -172,14 +173,7 @@ func outside(x, y int, at, size [2]int) bool {
 }
 
 func regexpQuote(s string) string {
-	var b []byte
-	for i := 0; i < len(s); i++ {
-		if c := s[i]; (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != ' ' && c != '-' && c != '_' {
-			b = append(b, '\\')
-		}
-		b = append(b, s[i])
-	}
-	return string(b)
+	return regexp.QuoteMeta(s)
 }
 
 func hyprJSON(what string, v any) error {

@@ -14,6 +14,8 @@ package omarchy
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -434,12 +436,9 @@ func Current() (Theme, bool) {
 }
 
 func hashOf(s string) uint64 {
-	h := uint64(14695981039346656037)
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= 1099511628211
-	}
-	return h
+	h := fnv.New64a()
+	io.WriteString(h, s)
+	return h.Sum64()
 }
 
 // fontName is the font Omarchy sets for everything, as omarchy-font-current
