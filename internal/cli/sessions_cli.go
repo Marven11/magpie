@@ -314,9 +314,9 @@ func sessionList(w io.Writer, o sessionsOpts, all []sessions.Session, now time.T
 	more := max(0, len(out)-o.limit)
 	out = out[:min(len(out), o.limit)]
 	if o.json {
-		for i := range out {
-			out[i].Path = tildePath(out[i].Path)
-		}
+		// the path as it is: --json is read by programs, and a ~ is the
+		// shell's to expand — the human-readable list below shortens it,
+		// where a reader has a shell and a home
 		return writeJSON(w, out)
 	}
 	if len(out) == 0 {

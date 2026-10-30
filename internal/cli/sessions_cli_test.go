@@ -124,6 +124,11 @@ func TestSessionsCmd(t *testing.T) {
 	if len(ss) != 1 || ss[0].Agent != "codex" || ss[0].Resume == "" {
 		t.Errorf("--json --model: %+v", ss)
 	}
+	// --json is read by programs: its path is one they can open, not a ~ a
+	// shell would have expanded (the human-readable list shortens it)
+	if !filepath.IsAbs(ss[0].Path) {
+		t.Errorf("--json path %q isn't a path to open", ss[0].Path)
+	}
 
 	var b bytes.Buffer
 	if err := sessionsTo(&b, []string{"--days", "7", "--model", "nope"}, now); err == nil || !strings.Contains(err.Error(), "gpt-6-astra") {
