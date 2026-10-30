@@ -76,7 +76,8 @@ func PublicDrawers(ctx context.Context, base string) []Model {
 			d.Name = m.ID
 		}
 		if slices.Contains(strings.Split(m.In, ","), "image") {
-			d.Images, d.ImageInput = true, imageInputOf(true)
+			yes := true
+			d.Images, d.ImageInput = true, &yes
 		}
 		out = append(out, d)
 	}
@@ -92,5 +93,3 @@ func WithDrawers(ms, drawers []Model) []Model {
 	}
 	return ms
 }
-
-func imageInputOf(b bool) *bool { return &b }
