@@ -147,7 +147,7 @@ func resumeSession(s sessions.Session) tea.Cmd {
 	}
 	// the shell's own "no such directory" is gone with the screen it was on
 	if fi, err := os.Stat(s.Cwd); s.Cwd != "" && (err != nil || !fi.IsDir()) {
-		return func() tea.Msg { return flashMsg{text: "its folder " + tildePath(s.Cwd) + " isn't there any more"} }
+		return func() tea.Msg { return flashMsg{text: "its folder " + tilde(s.Cwd) + " isn't there any more"} }
 	}
 	c := proc.Command("sh", "-c", s.Resume)
 	if runtime.GOOS == "windows" {
@@ -224,7 +224,7 @@ func sessBar(rng int, model, folder string, stats bool) string {
 	if stats {
 		view = sFaint.Render("sessions · ") + sNameOn.Render("stats")
 	}
-	return strings.Join(tabs, " ") + "    " + filter(model, allModels) + sFaint.Render(" · ") + filter(tildePath(folder), allFolders) + "    " + view
+	return strings.Join(tabs, " ") + "    " + filter(model, allModels) + sFaint.Render(" · ") + filter(tilde(folder), allFolders) + "    " + view
 }
 
 // sessListLines is the sessions view below the header: the bar, then the
@@ -395,7 +395,7 @@ func sessLines(st sessions.Stats, rng int, model, folder string, byCost bool, wi
 			if s == "" {
 				return "(no folder)"
 			}
-			return trunc(tildePath(s), 48)
+			return trunc(tilde(s), 48)
 		})
 	}
 	return out
@@ -490,11 +490,4 @@ func shortDate(d string) string {
 		return d
 	}
 	return t.Format("Jan 2")
-}
-
-func tildePath(p string) string {
-	if home, err := os.UserHomeDir(); err == nil && home != "" && strings.HasPrefix(p, home) {
-		return "~" + p[len(home):]
-	}
-	return p
 }
