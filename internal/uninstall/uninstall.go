@@ -4,10 +4,11 @@
 // Jevik_AI on X deleted magpie's folders by hand, and Codex's config.toml
 // kept openai_base_url on 127.0.0.1:3425: every Codex turn failed with a
 // 502, with nothing left that knew why. Deleting magpie's files never puts
-// an agent back, so uninstalling does that first, the way each agent's
-// Disconnect does (what magpie changed goes back, what the user changed
-// by hand since stays theirs), then removes what magpie registered with
-// the system, then its own files.
+// an agent back, so uninstalling does that, the way each agent's Disconnect
+// does (what magpie changed goes back, what the user changed by hand since
+// stays theirs): the service first, since one still serving would put
+// magpie back into the agents it watches, then each agent, then its own
+// files.
 //
 // What it leaves: the magpie executable itself (a running program can't
 // delete itself everywhere, and the user put it there), and the Library's
@@ -274,7 +275,7 @@ func removeAllBut(dir, keep string) error {
 	return errors.Join(errs...)
 }
 
-// Run uninstalls magpie: agents, then the system, then its files. The
+// Run uninstalls magpie: the system, then the agents, then its files. The
 // app runs Data itself once it has quit (WebView2 holds its folder open
 // while it runs), so it calls Agents and System only.
 func Run(ctx context.Context) *Report {
