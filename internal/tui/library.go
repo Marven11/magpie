@@ -32,9 +32,6 @@ type libRow struct {
 	bad   int      // agents it couldn't be given to
 }
 
-// libKinds are what the library can give, by row kind.
-var libKinds = map[string]string{"instructions": "instructions", "mcp": "mcp", "skill": "skills"}
-
 // editorArgs is a command line as $VISUAL and $EDITOR hold it: the program
 // and its arguments, a quoted run being one argument with the quotes taken
 // off, and a backslash escaping the next character where the shell does. A
