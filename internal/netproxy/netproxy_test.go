@@ -156,6 +156,47 @@ func TestEnv(t *testing.T) {
 	}
 }
 
+// The user's own NO_PROXY exceptions are kept when magpie replaces the proxy
+// variables: they name hosts the user's network reaches directly (a corporate
+// network, a LAN MCP server, an internal model gateway), and the CLI magpie
+// starts is the one that talks to them.
+func TestEnvKeepsTheUsersNoProxy(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	sysCache.at, sysCache.p = farFuture, Proxy{URL: "http://127.0.0.1:7890", Bypass: []string{"*.corp"}}
+	t.Cleanup(func() { sysCache.at = zero })
+	get := func(env []string, k string) string {
+		v := ""
+		for _, e := range env {
+			if key, val, _ := strings.Cut(e, "="); key == k {
+				v = val
+			}
+		}
+		return v
+	}
+	for _, c := range []struct {
+		name  string
+		proxy string
+		want  string
+	}{
+		{"the system's", "", "localhost,127.0.0.1,::1,.corp,intra.example,10.0.0.0/8"},
+		{"magpie's own", "127.0.0.1:6152", "localhost,127.0.0.1,::1,intra.example,10.0.0.0/8"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			settings.Save(settings.Settings{Proxy: c.proxy})
+			env := Env([]string{"PATH=/bin", "NO_PROXY=intra.example, 10.0.0.0/8", "no_proxy=intra.example"})
+			if got := get(env, "NO_PROXY"); got != c.want {
+				t.Fatalf("NO_PROXY=%q, want %q (%v)", got, c.want, env)
+			}
+			if got := get(env, "no_proxy"); got != c.want {
+				t.Fatalf("no_proxy=%q, want %q", got, c.want)
+			}
+			if get(env, "PATH") != "/bin" {
+				t.Fatalf("PATH went: %v", env)
+			}
+		})
+	}
+}
+
 var farFuture = time.Now().Add(time.Hour)
 var zero time.Time
 

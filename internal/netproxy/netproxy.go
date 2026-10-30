@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -356,11 +357,24 @@ func proxyVar(k string) bool {
 }
 
 // withProxy is env with its *_PROXY replaced by p ("" for none), and
-// NO_PROXY naming loopback and bypass.
+// NO_PROXY naming loopback, bypass, and the exceptions env already had. A
+// user's own exceptions are theirs — a corporate network, a LAN MCP server,
+// an internal model gateway — and dropping them sent those hosts through a
+// proxy they were written to avoid.
 func withProxy(env []string, p string, bypass []string) []string {
 	out := make([]string, 0, len(env)+8)
+	var mine []string
 	for _, e := range env {
-		if k, _, _ := strings.Cut(e, "="); !proxyVar(k) {
+		k, v, _ := strings.Cut(e, "=")
+		if strings.EqualFold(k, "NO_PROXY") {
+			for _, b := range strings.Split(v, ",") {
+				if b = strings.TrimSpace(b); b != "" && !slices.Contains(mine, b) {
+					mine = append(mine, b)
+				}
+			}
+			continue
+		}
+		if !proxyVar(k) {
 			out = append(out, e)
 		}
 	}
@@ -372,6 +386,13 @@ func withProxy(env []string, p string, bypass []string) []string {
 		switch b = strings.TrimPrefix(strings.TrimSpace(b), "*"); b {
 		case "", "<local>":
 		default:
+			if !slices.Contains(no, b) {
+				no = append(no, b)
+			}
+		}
+	}
+	for _, b := range mine {
+		if !slices.Contains(no, b) {
 			no = append(no, b)
 		}
 	}
