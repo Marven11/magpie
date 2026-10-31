@@ -1755,7 +1755,7 @@ func claudeIn(at place) *Agent {
 			// time, folded in the picker (#496). Only this machine's: a
 			// distro's Claude Code has a sign-in of its own, which magpie
 			// doesn't read
-			return append(group(name, own), claudeViaMagpie(name == "Claude Code" && at.id == "")...)
+			return append(group(name, own), claudeViaShared(name == "Claude Code" && at.id == "")...)
 		},
 	}, {
 		// the effort Claude Code starts with, as its /effort saves it: under
@@ -2489,11 +2489,19 @@ func claudeAliasOption(v string, ms []catalog.Model, tier func(string) string) (
 // tier fields asked it each poll, for the picker and again for Drift, a
 // list built anew each time, 30 MB of forty polls with real accounts.
 func claudeViaMagpie(fold bool) []Option {
+	return slices.Clone(claudeViaShared(fold))
+}
+
+// claudeViaShared is claudeViaMagpie without the caller's own copy, the
+// list kept, read only: for a caller appending it to a list of its own,
+// which copies it anyway (Claude Code's model field, 5 MB of forty polls
+// copied twice).
+func claudeViaShared(fold bool) []Option {
 	key := "\x00claude-via"
 	if fold {
 		key += "-folded"
 	}
-	return builtOptions.get(key, func() []Option { return buildClaudeVia(fold) })
+	return builtOptions.shared(key, func() []Option { return buildClaudeVia(fold) })
 }
 
 // buildClaudeVia is claudeViaMagpie built afresh.
