@@ -2786,6 +2786,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		}()
 	}
+	// the plan as it stands for the tries: whether the one that answers
+	// stood in for a member listed ahead of its own (standsInFor)
+	plannedCs, plannedOrder := slices.Clone(cands), pl.order
 	for i := 0; i < len(cands); i++ {
 		c := cands[i]
 		if j := s.laneMate(cands, i, isGroup, gaveWay); j > i {
@@ -4166,7 +4169,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// a compaction a rule sent to a model of its own leaves the
 			// conversation, and the turn's size, where they were
 			if hit == nil || !hit.Compact {
-				answered(stuck, c, aff.Turn, call.Usage)
+				answeredStanding(stuck, c, aff.Turn, call.Usage, standsInFor(c, plannedCs, plannedOrder))
 			}
 			// the trigger was kept, so whoever answered sealed it: a
 			// fallback whose own native compaction is off too, whose seal
