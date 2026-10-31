@@ -175,11 +175,12 @@ func (a *Agent) Drift() *Drift {
 		return nil
 	}
 	vals := a.Values()
+	opts := fieldOptions{}
 	// the field on one of magpie's models: where drift shows, and what
 	// setting it again sets
 	on, onMagpie := a.Fields[0], false
 	for _, f := range a.Fields {
-		if magpieValue(a, f, vals[f.Key], vals) {
+		if magpieValueIn(a, f, vals[f.Key], vals, opts) {
 			on, onMagpie = f, true
 			break
 		}
@@ -213,7 +214,7 @@ func (a *Agent) Drift() *Drift {
 		if now == "" && f.Follows != "" {
 			now = vals[f.Follows]
 		}
-		if !ok || picked || now == want || !magpieValue(a, f, want, vals) || magpieValue(a, f, now, vals) || sameGroup(want, now) {
+		if !ok || picked || now == want || !magpieValueIn(a, f, want, vals, opts) || magpieValueIn(a, f, now, vals, opts) || sameGroup(want, now) {
 			continue
 		}
 		return &Drift{Kind: "replaced", Field: f.Key, Now: vals[f.Key], Want: want,
@@ -296,6 +297,30 @@ func bypassed(used, applied, seen time.Time) bool {
 // its suffix after the model (SplitSuffix) aside; a list of models is the
 // user's own.
 func magpieValue(a *Agent, f Field, v string, vals map[string]string) bool {
+	return magpieValueIn(a, f, v, vals, nil)
+}
+
+// fieldOptions keeps each field's options, by its key, for one look at an
+// agent's values: Drift asks magpieValue up to three times a field, and
+// Claude Code's options (claudeViaMagpie, its own models) were made anew
+// each time, 35 MB of what forty polls with real accounts allocated.
+type fieldOptions map[string][]Option
+
+func (o fieldOptions) of(f Field, vals map[string]string) []Option {
+	if o == nil {
+		return f.Options(vals)
+	}
+	opts, ok := o[f.Key]
+	if !ok {
+		opts = f.Options(vals)
+		o[f.Key] = opts
+	}
+	return opts
+}
+
+// magpieValueIn is magpieValue reading a field's options from opts, made
+// for the same vals; nil reads them anew.
+func magpieValueIn(a *Agent, f Field, v string, vals map[string]string, opts fieldOptions) bool {
 	if v == "" {
 		return false
 	}
@@ -314,7 +339,7 @@ func magpieValue(a *Agent, f Field, v string, vals map[string]string) bool {
 	if f.Options == nil {
 		return false
 	}
-	for _, o := range f.Options(vals) {
+	for _, o := range opts.of(f, vals) {
 		if o.Value == v {
 			return o.Ref != ""
 		}
