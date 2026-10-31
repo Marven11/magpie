@@ -14444,7 +14444,7 @@ function keyWeight(p, k, w, total, path = "keys/weight", body = { id: p.id, ref:
 
 // renderKeyAccounts: a key provider's accounts, one per key, the same list
 // a subscription has. addingKey holds the half-typed new one.
-let addingKey = null;
+let addingKey = null, keyHeld;
 function renderKeyAccounts(p) {
   const list = el("div", "accts keys");
   list.dataset.provider = p.id;
@@ -14471,8 +14471,7 @@ function renderKeyAccounts(p) {
     name.onclick = () => renameIn(name, k.name || "", t("Name, e.g. Personal or Team"), (n) => accountAction("keys/rename", { id: p.id, ref: k.id, name: n }));
     row.append(dot, name);
     if (k.name) row.append(el("span", "plan mono", k.masked));
-    // a key rotated at the vendor (#1869): its new value pasted in place,
-    // keeping its name, place and settings; a rest it had is lifted
+    // a key rotated at the vendor (#1869): its new value pasted in place
     const edit = el("button", "key-edit");
     edit.title = t("Paste a new value for this key; its name, place and settings stay");
     edit.setAttribute("aria-label", t("Change key"));
@@ -14498,8 +14497,7 @@ function renderKeyAccounts(p) {
     };
     // a double-click on the row is the shortcut, away from its controls
     row.ondblclick = (e) => { if (!e.target.closest("button, input, textarea, .acct-models")) edit.onclick(e); };
-    // each key copies its own (#1480): with several, the editor has no
-    // API key field to show one in
+    // each key copies its own (#1480)
     const cp = el("button", "copy");
     cp.title = t("Copy");
     cp.append(svg(COPY_ICON, 12, 1.5));
@@ -14552,28 +14550,30 @@ function renderKeyAccounts(p) {
     // how many requests it has out at once, and waiting (#892)
     row.append(laneLimitPill(p, k.id, p.id + "#" + k.id, k.name || k.masked));
     row.append(el("span", "grow"));
-    // off and on again by name, beside Remove (wei_VC on X: the dot alone
-    // wasn't seen as a switch, so keeping a key meant adding it again).
-    // The last key on stays on: the provider's own switch is for that.
-    // Switch off shows on hover, as Remove does; an off key's Switch on
-    // always shows, the one thing to do with it.
+    // one, under the chips if it doesn't fit (young02036); held: app.css
+    const acts = el("span", "key-acts");
+    acts.onclick = () => keyHeld = k.id;
+    if (keyHeld === k.id) row.classList.add("held"), addEventListener("pointermove", function go(e) { if (!row.contains(e.target)) keyHeld = null, row.classList.remove("held"), removeEventListener("pointermove", go); });
+    // off and on by name (wei_VC on X); not the last key on, which the
+    // provider's own switch is for. An off key's Switch on always shows
     if (!k.on || several) {
       const sw = el("button", "text key-switch" + (k.on ? " quiet" : ""), k.on ? t("Switch off") : t("Switch on"));
       sw.title = k.on ? t("Stop using this key") : t("Use this key too");
       sw.onclick = () => { sw.classList.add("busy"); accountAction("keys/" + (k.on ? "off" : "on"), { id: p.id, ref: k.id }); };
-      row.append(sw);
+      acts.append(sw);
     }
     if (!k.active || several) {
       const rm = el("button", "text quiet", t("Remove"));
       rm.onclick = () => accountAction("keys/remove", { id: p.id, ref: k.id }, t("Key removed"));
-      row.append(rm);
+      acts.append(rm);
     }
-    if (k.active) row.append(el("span", "using", several ? t("First") : t("In use")));
+    if (k.active) acts.append(el("span", "using", several ? t("First") : t("In use")));
     else if (k.on) {
       const first = el("button", "text", t("Make first"));
       first.onclick = () => { first.classList.add("busy"); accountAction("keys/use", { id: p.id, ref: k.id }, t("{name} tries {key} first", { name: p.name, key: k.name || k.masked })); };
-      row.append(first);
+      acts.append(first);
     }
+    row.append(acts);
     if (restLine) row.append(restLine);
     if (amBox) row.append(amBox), row.classList.add("with-am");
     list.append(row);
