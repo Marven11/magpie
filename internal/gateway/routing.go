@@ -355,8 +355,12 @@ var (
 	// stopped before the call was whole, and the plugin ends the turn as a
 	// failure "the gateway can retry or fail over" — its words, shared by
 	// the plugins that read text-form calls (magpie-community/plugins#38,
-	// packages/trae and packages/qoder's CUT_SHORT; #2873)
-	cutWords = regexp.MustCompile(`(?i)tool call, written as text, was cut short`)
+	// packages/trae and packages/qoder's CUT_SHORT; #2873). The Qoder
+	// plugin's NAMELESS is one too: qfmodel began a native tool call and
+	// never named it, twice, before anything of the reply was given — the
+	// model's glitch, not the account's, and asked again it mostly answers
+	// (magpie-community/plugins#579)
+	cutWords = regexp.MustCompile(`(?i)tool call, written as text, was cut short|native tool call has no name; it is not sent on as a tool`)
 )
 
 // Why a candidate failed, as rest tells it.
