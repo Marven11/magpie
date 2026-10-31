@@ -653,15 +653,15 @@ func desktopNumbers(agents []agentUse) map[string]string {
 }
 
 func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
-	return providerInfoWith(p, agents, desktopNumbers(agents))
+	return providerInfoWith(p, p.Listing(), agents, desktopNumbers(agents))
 }
 
 // providerInfoWith is providerInfo with the Claude Desktop numbers read
-// once for the whole list (desktopNumbers).
-func providerInfoWith(p provider.Provider, agents []agentUse, desktop map[string]string) providerJSON {
-	// the vendor's list read once for the picks, what is exposed and the
-	// newest of each family: each read builds it whole
-	avail := p.Available()
+// once for the whole list (desktopNumbers), and the provider's models
+// given: the vendor's list read once for the picks, what is exposed and
+// the newest of each family, as each read builds it whole.
+func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUse, desktop map[string]string) providerJSON {
+	avail := ls.Available
 	out := providerJSON{
 		ID: p.ID, Name: p.Name, Icon: p.Icon, Preset: p.Preset, Host: p.Host(),
 		Chat: p.Chat, Responses: p.Responses, Anthropic: p.Anthropic, Gemini: p.Gemini, Decide: p.Decide, BaseAPI: p.BaseAPI, ModelTest: p.ModelTest(), TestsAs: p.TestClients(), DecideTest: p.AsksDecideModels(), MarksKinds: p.MarksKinds(),
@@ -797,12 +797,12 @@ func providerInfoWith(p provider.Provider, agents []agentUse, desktop map[string
 		}
 	}
 	exposed := map[string]bool{}
-	exposedList := p.ExposedOf(avail)
+	exposedList := ls.Exposed
 	for _, m := range exposedList {
 		exposed[m.ID] = true
 	}
 	newest := map[string]bool{}
-	for _, m := range p.NewestInFamily(avail) {
+	for _, m := range ls.Newest {
 		newest[m.ID] = true
 	}
 	seen := map[string]bool{}
@@ -1014,7 +1014,7 @@ func providersState() providersJSON {
 	for _, p := range provider.All() {
 		// a preset is added once any provider is its, whatever its id
 		have[p.ID], have[p.Preset] = true, true
-		s.Providers = append(s.Providers, providerInfoWith(p, uses, desktop))
+		s.Providers = append(s.Providers, providerInfoWith(p, provider.KeptListing(p), uses, desktop))
 	}
 	// partners first, as the add sheet lists them
 	for _, pa := range provider.Partners() {

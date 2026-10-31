@@ -1612,6 +1612,33 @@ func (p Provider) NewestInFamily(avail []catalog.Model) []catalog.Model {
 	return catalog.BestInFamily(p.servable(avail))
 }
 
+// Listing is a provider's models as the Providers page draws them: the
+// vendor's list (Available), what of it is exposed (ExposedOf) and the
+// newest of each family (NewestInFamily).
+type Listing struct{ Available, Exposed, Newest []catalog.Model }
+
+// Listing is p's Listing, built afresh.
+func (p Provider) Listing() Listing {
+	avail := p.Available()
+	return Listing{avail, p.ExposedOf(avail), p.NewestInFamily(avail)}
+}
+
+// KeptListing is the Listing of a provider All gave, kept across requests
+// with the catalog (keptOf) while nothing it is built from changed: each
+// poll of the Providers page built every provider's list and its newest
+// of each family again, 9 MB a poll in a real setup. What it gives is
+// shared, so read only.
+func KeptListing(p Provider) Listing {
+	return keptOf("listing:"+p.ID, func() Listing {
+		listingsBuilt.Add(1)
+		l := p.Listing()
+		return Listing{slices.Clip(l.Available), slices.Clip(l.Exposed), slices.Clip(l.Newest)}
+	})
+}
+
+// listingsBuilt counts the Listings KeptListing built, for a test.
+var listingsBuilt atomic.Int64
+
 // NoAPIFor says the provider has a URL for none of the APIs the vendor's
 // list serves model on (or the one the user set for it): a relay's Claude
 // listed on /messages alone, at a provider given only a chat URL. Agents
