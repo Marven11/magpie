@@ -992,7 +992,7 @@ func claudeIn(at place) *Agent {
 		// provider the label already says is left "via magpie".
 		labels := listLabels("claude")
 		rows := []any{}
-		for _, o := range viaMagpie("claude", "") {
+		for _, o := range viaMagpieShared("claude", "") {
 			if slices.ContainsFunc(onTier, func(v string) bool { return claudeSameModel(v, o.Value) }) {
 				continue
 			}
@@ -1039,7 +1039,7 @@ func claudeIn(at place) *Agent {
 		}
 		mark1M := claude1M()
 		var refs []string
-		for _, o := range viaMagpie("claude", "") {
+		for _, o := range viaMagpieShared("claude", "") {
 			refs = append(refs, mark1M(o.Value))
 		}
 		return refs

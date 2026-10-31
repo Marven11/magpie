@@ -1265,7 +1265,7 @@ func codexIn(at place) *Agent {
 		// models direct only). Routed, Codex's own say via magpie already.
 		onSignIn := (p == "" || p == "openai" || isCCSwitchMirror(p)) && chatGPT()
 		if !through && (!onSignIn || codexFailover()) {
-			return append(own, viaMagpie("codex", "")...)
+			return append(own, viaMagpieShared("codex", "")...)
 		}
 		return append(own, codexViaMagpieFor(own)...)
 	}
@@ -2194,7 +2194,7 @@ func codexViaMagpieFor(own []Option) []Option {
 		}
 	}
 	var hidden, out []Option
-	for _, o := range viaMagpie("codex", "") {
+	for _, o := range viaMagpieShared("codex", "") {
 		if !strings.HasPrefix(o.Value, "codex/") {
 			out = append(out, o)
 		} else if !in[codexOwnOf(o.Value)] {

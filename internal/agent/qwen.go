@@ -406,7 +406,7 @@ func qwenIn(at place) *Agent {
 				return setProviders(false)
 			},
 			Options: func(cur map[string]string) []Option {
-				return append(qwenOwnOptions(path, cur["model"]), viaMagpie("qwen", magpieID+"/")...)
+				return append(qwenOwnOptions(path, cur["model"]), viaMagpieShared("qwen", magpieID+"/")...)
 			},
 		}},
 	}, path)

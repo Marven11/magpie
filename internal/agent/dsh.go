@@ -225,7 +225,7 @@ func dshAt(at place) *Agent {
 						own[i].Direct = "DeepSeek"
 					}
 				}
-				return append(own, viaMagpie("dsh", magpieID+"/")...)
+				return append(own, viaMagpieShared("dsh", magpieID+"/")...)
 			},
 		}, {
 			// the thinking effort sessions start with: agent-default-model's

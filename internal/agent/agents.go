@@ -979,7 +979,7 @@ func openCodeLike(at place, id, name, icon, bin, dir, auth string, ua []string, 
 	provider := openCodeKept(path, func() any { return magpieProviderJSONAt("opencode", id, at.gw()) })
 	opts := func(key string) func(map[string]string) []Option {
 		return func(cur map[string]string) []Option {
-			return append(ownOptions(auth, cur[key]), viaMagpie(id, magpieID+"/")...)
+			return append(ownOptions(auth, cur[key]), viaMagpieShared(id, magpieID+"/")...)
 		}
 	}
 	get := func(k string) string { v, _ := edit.GetJSON(path, k); return v }
@@ -1395,7 +1395,7 @@ func piLikeKeyed(at place, id, name, dir string, key func() string) *Agent {
 					return piScopeWith(path, v)
 				},
 				Options: func(cur map[string]string) []Option {
-					return append(ownOptionsFrom(piRegistry(id), auth, cur["model"]), viaMagpie(id, magpieID+"/")...)
+					return append(ownOptionsFrom(piRegistry(id), auth, cur["model"]), viaMagpieShared(id, magpieID+"/")...)
 				},
 			},
 			{
@@ -1515,7 +1515,7 @@ func gooseIn(at place, cfg string) *Agent {
 				// only the native providers this goose is set up with (#987:
 				// every one of four was listed, OpenRouter's hundreds of
 				// models on a goose that had only magpie)
-				return append(ownOptions("", cur["model"], gooseConfigured(path, keyEnv)...), viaMagpie("goose", gooseProviderID+"/")...)
+				return append(ownOptions("", cur["model"], gooseConfigured(path, keyEnv)...), viaMagpieShared("goose", gooseProviderID+"/")...)
 			},
 		}, {
 			// GOOSE_THINKING_EFFORT, the effort goose asks of a model that
@@ -1733,7 +1733,7 @@ func crushAt(at place, path, data string) *Agent {
 					}
 				}
 			}
-			return append(ownOptions("", cur[key], extra...), viaMagpie("crush", magpieID+"/")...)
+			return append(ownOptions("", cur[key], extra...), viaMagpieShared("crush", magpieID+"/")...)
 		}
 	}
 	// replacePick puts v in place of the whole models.<type> object in the

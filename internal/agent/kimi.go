@@ -361,7 +361,7 @@ func kimiIn(at place) *Agent {
 				return dropMagpie()
 			},
 			Options: func(cur map[string]string) []Option {
-				return append(kimiOwnOptions(path, cur["model"]), viaMagpie("kimi", magpieID+"/")...)
+				return append(kimiOwnOptions(path, cur["model"]), viaMagpieShared("kimi", magpieID+"/")...)
 			},
 		}},
 	}, path)

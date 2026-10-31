@@ -342,7 +342,7 @@ func ompAt(at place, dir string, entry func() ompProviderEntry) *Agent {
 				return dropMagpie()
 			},
 			Options: func(cur map[string]string) []Option {
-				opts := append(ompOwnOptions(pick("models"), cur[key]), viaMagpie("omp", magpieID+"/")...)
+				opts := append(ompOwnOptions(pick("models"), cur[key]), viaMagpieShared("omp", magpieID+"/")...)
 				// a catalog model with a thinking level is offered as it
 				// reads, beside the model: that keeps the level, the model
 				// alone clears it

@@ -412,7 +412,7 @@ func grokApp(home string) *Agent {
 				return setDefault(v)
 			},
 			Options: func(cur map[string]string) []Option {
-				return append(grokAppOwn(path, keyDefault, cur["model"]), viaMagpie("grok-app", magpieID+"/")...)
+				return append(grokAppOwn(path, keyDefault, cur["model"]), viaMagpieShared("grok-app", magpieID+"/")...)
 			},
 		}},
 	}, path)
