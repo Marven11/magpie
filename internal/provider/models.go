@@ -2779,7 +2779,11 @@ func SubscriptionKept(e Entry) bool {
 // catalogKeeping is Catalog with the unlisted models keep says, too.
 func catalogKeeping(keep func(Entry) bool) []Entry {
 	entries := providerEntries()
-	out := slices.Clone(groupEntries(entries)) // held: the caller's to change
+	groups := groupEntries(entries) // held: copied into the caller's own
+	// made once with room for every entry: cloned at the groups' size and
+	// grown by append for the providers' models, it was 29 MB of what forty
+	// polls of the Providers page allocated with real accounts
+	out := append(make([]Entry, 0, len(groups)+len(entries)), groups...)
 	kept := unlistedByGroups(entries)
 	for _, e := range entries {
 		if !e.Provider.Unlisted && len(kept[e.ID]) == 0 || keep != nil && keep(e) {
