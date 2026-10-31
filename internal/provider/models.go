@@ -1580,7 +1580,8 @@ func (p Provider) ExposedOf(avail []catalog.Model) []catalog.Model {
 		picks = slices.DeleteFunc(slices.Clone(picks), p.Account.unusable)
 	}
 	if len(picks) > 0 {
-		return slices.DeleteFunc(pick(p.withNewlyListed(picks, avail)), func(m catalog.Model) bool { return p.NoAPIFor(m.ID) })
+		noAPI := p.NoAPI()
+		return slices.DeleteFunc(pick(p.withNewlyListed(picks, avail)), func(m catalog.Model) bool { return noAPI(m.ID) })
 	}
 	// a model listed on none of the APIs the provider has a URL for is
 	// left out before the first 24 are taken (#2094)
@@ -1601,7 +1602,8 @@ func (p Provider) ExposedOf(avail []catalog.Model) []catalog.Model {
 
 // servable is avail less the models NoAPIFor leaves out.
 func (p Provider) servable(avail []catalog.Model) []catalog.Model {
-	return slices.DeleteFunc(slices.Clone(avail), func(m catalog.Model) bool { return p.NoAPIFor(m.ID) })
+	noAPI := p.NoAPI()
+	return slices.DeleteFunc(slices.Clone(avail), func(m catalog.Model) bool { return noAPI(m.ID) })
 }
 
 // NewestInFamily is the models Best in family would serve of avail, the
@@ -1646,16 +1648,23 @@ var listingsBuilt atomic.Int64
 // a provider of keys, whose URLs the user typed: a sign-in's APIs are
 // magpie's own. A model whose list says no API, and a provider with no URL
 // at all, are never left out here.
-func (p Provider) NoAPIFor(model string) bool {
+func (p Provider) NoAPIFor(model string) bool { return p.NoAPI()(model) }
+
+// NoAPI is NoAPIFor for each model of a list: the APIs the provider has a
+// URL for are found once for the list, not once for each model (they were
+// most of what NoAPIFor allocated, 16 MB of twenty window polls).
+func (p Provider) NoAPI() func(model string) bool {
 	if p.Account != nil {
-		return false
-	}
-	apis := p.APIs(model)
-	if len(apis) == 0 {
-		return false
+		return func(string) bool { return false }
 	}
 	speaks := p.Speaks()
-	return len(speaks) > 0 && !slices.ContainsFunc(speaks, func(s Protocol) bool { return slices.Contains(apis, s) })
+	if len(speaks) == 0 {
+		return func(string) bool { return false }
+	}
+	return func(model string) bool {
+		apis := p.apisAmong(speaks, model)
+		return len(apis) > 0 && !slices.ContainsFunc(speaks, func(s Protocol) bool { return slices.Contains(apis, s) })
+	}
 }
 
 // Picks are the models the user picked, with those the vendor has listed

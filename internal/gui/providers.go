@@ -821,6 +821,7 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 	// was most of the Providers page's wait with many models (lml on
 	// Discord, Windows)
 	set := held
+	noAPI := p.NoAPI()
 	named := func(m catalog.Model, on bool) modelJSON {
 		images := m.Images || catalog.SeesImages(m.ID)
 		if m.ImageInput != nil {
@@ -850,7 +851,7 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 				j.Auto = append(j.Auto, string(a))
 			}
 		}
-		j.NoAPI = p.NoAPIFor(m.ID)
+		j.NoAPI = noAPI(m.ID)
 		j.Same = sames[p.ID+"/"+m.ID]
 		if own := p.OwnModelID(m.ID); own != m.ID {
 			j.Vendor = own

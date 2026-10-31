@@ -1681,8 +1681,12 @@ func (p Provider) Base(proto Protocol) string {
 	return ""
 }
 
+// speaksLooked counts Speaks' looks, for a test.
+var speaksLooked atomic.Int64
+
 // Speaks lists the protocols the vendor serves natively, preferred first.
 func (p Provider) Speaks() []Protocol {
+	speaksLooked.Add(1)
 	// a Google sign-in speaks Code Assist, and only that
 	if p.Account != nil && p.Account.codeAssist != "" && !p.IsPlugin() {
 		return []Protocol{CodeAssist}
