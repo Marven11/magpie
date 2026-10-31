@@ -2644,6 +2644,14 @@ function routingPage(part) {
       else if (w.aside) s = t("{api} only · after the others", { api: API[w.speaks] || w.speaks || t("any API") });
       else if (w.speaks) s = t("{api} only", { api: API[w.speaks] || w.speaks });
       else s = w.kind === "key" ? t("API key") : t("one key");
+      // when a known allowance renews stays on its row whatever the row is
+      // doing (dzxx0496 on Discord): answering, kept for last, passed over.
+      // A resting row says when it is back instead, a free one has nothing
+      // to renew, and a row that says it already isn't told twice.
+      if (!resting && !w.unlisted && w.known && !w.free) {
+        const soon = usedRenews(w), renew = soon > n ? t("renews in {d}", { d: dur(soon - n) }) : "";
+        if (renew && !s.includes(renew)) s += " · " + renew;
+      }
       // the title in a span of its own, one line cut short however the
       // status wraps on a narrow stage (routing.css .ses)
       const line = s + (named ? " · " : "");
