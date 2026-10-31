@@ -250,3 +250,22 @@ func TestForeignSealedReasoningWholeReplyCarriesNoContent(t *testing.T) {
 		})
 	}
 }
+
+// The made item's summary is the item's text once: a vendor that writes
+// its reasoning as both summary and content (#2855's later rollout) is not
+// handed back the words twice, and an item with no summary key at all is
+// made over, not a panic.
+func TestMadeReasoningSaysItsTextOnce(t *testing.T) {
+	for name, raw := range map[string]string{
+		"both":       `{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"counting the lines"}],"content":[{"type":"reasoning_text","text":"counting the lines"}]}`,
+		"no summary": `{"type":"reasoning","id":"rs_1","content":[{"type":"reasoning_text","text":"counting the lines"}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var it map[string]any
+			if err := json.Unmarshal(magpieMadeReasoningRaw(json.RawMessage(raw), ""), &it); err != nil {
+				t.Fatal(err)
+			}
+			assertResendable(t, it, "counting the lines")
+		})
+	}
+}

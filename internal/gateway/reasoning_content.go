@@ -31,7 +31,7 @@ func reasoningWithText(item map[string]any) bool {
 
 // magpieMadeReasoning is the reasoning item magpie makes of one a
 // Responses upstream wrote with its text in it, nil of one that carries no
-// content, which goes as it came. The item's summaries and its text become
+// content, which goes as it came. Its text (else its summaries) becomes
 // one summary of magpie's; its content and its seal go, the text kept, so
 // an upstream that wants its reasoning back is sent it (withReasoningText).
 // Its own id is kept, the events of a stream naming the item by it.
@@ -39,31 +39,36 @@ func magpieMadeReasoning(item map[string]any) map[string]any {
 	if !reasoningWithText(item) {
 		return nil
 	}
-	var b strings.Builder
-	for _, p := range item["summary"].([]any) {
-		pm, _ := p.(map[string]any)
-		if pm == nil {
-			continue
-		}
-		s, _ := pm["text"].(string)
-		b.WriteString(s)
-	}
-	for _, p := range item["content"].([]any) {
-		pm, _ := p.(map[string]any)
-		if pm == nil {
-			continue
-		}
-		if t, _ := pm["type"].(string); t == "reasoning_text" {
+	// the text, else the summaries: a vendor that writes both may write
+	// the same words twice (#2855's later rollout: each item's content
+	// the summary over again), and the text is what a vendor that wants
+	// its reasoning back reads
+	text := func(key, typ string) string {
+		var b strings.Builder
+		parts, _ := item[key].([]any)
+		for _, p := range parts {
+			pm, _ := p.(map[string]any)
+			if pm == nil {
+				continue
+			}
+			if t, _ := pm["type"].(string); typ != "" && t != typ {
+				continue
+			}
 			s, _ := pm["text"].(string)
 			b.WriteString(s)
 		}
+		return b.String()
+	}
+	said := text("content", "reasoning_text")
+	if said == "" {
+		said = text("summary", "")
 	}
 	id, _ := item["id"].(string)
 	if id == "" {
 		id = "rs_" + newID()
 	}
 	return map[string]any{"id": id, "type": "reasoning", "status": "completed",
-		"summary": []map[string]any{{"type": "summary_text", "text": b.String()}}}
+		"summary": []map[string]any{{"type": "summary_text", "text": said}}}
 }
 
 // magpieMadeReasoningRaw is the item's bytes, made over when the item
