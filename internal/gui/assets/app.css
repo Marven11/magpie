@@ -2430,7 +2430,13 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 /* Providers' search (#1614): a toolbar field over the list, at its right
    edge as Settings' is; across the page when the window is narrow. While
    searching, the Turned off fold stays open on the ones that match. */
-#view-providers .pv-head { display: flex; justify-content: flex-end; margin: 0 0 10px; flex: none; }
+#view-providers .pv-head { display: flex; justify-content: flex-end; gap: 8px; margin: 0 0 10px; flex: none; }
+/* Hide accounts, on Routing, Usage and (its own switch) Providers. On, it
+   says so in its struck eye and its words, a shade darker: a page tool,
+   not a banner */
+.rt-mask { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.rt-mask svg { width: 13px; height: 13px; flex: none; }
+.rt-mask[aria-pressed="true"] { color: var(--fg-2); }
 #view-providers .pv-q { flex: 0 1 220px; min-width: 120px; }
 #view-providers .pv-none { margin: 18px 2px; }
 #view-providers .off-head .fold:disabled { cursor: default; opacity: 1; }
@@ -3992,6 +3998,7 @@ body.panel .modal { padding: 16px 12px; }
   body.web .usage-head > .segs { max-width: 100%; flex-wrap: wrap; }
   body.web .usage-head > .grow, body.web .sess-tools > .grow { display: none; }
   body.web .sess-filter { order: 1; flex: 1 1 100%; width: 100%; }
+  body.web .pv-head > .rt-mask { order: 2; }
   body.web .sess-pick { min-height: 44px; max-width: 100%; font-size: 14px; }
   body.web .stats, body.web .stats.six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   body.web .kpi small { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
