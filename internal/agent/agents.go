@@ -257,6 +257,7 @@ func onMachine(home, cfg string) []*Agent {
 		empryo(home),
 		ante(home),
 		astrbot(home),
+		qwenpaw(home),
 		openClaw(home),
 		jcode(home),
 		miniMax(home),
@@ -283,7 +284,7 @@ func onMachine(home, cfg string) []*Agent {
 		cindy(),
 		aionui(),
 		lody(home),
-	}, ompProfiles(home)...)
+	}, append(ompProfiles(home), qwenpawAgents(home)...)...)
 }
 
 // ---- accessors -------------------------------------------------------------

@@ -89,7 +89,7 @@ func usable(name, v string) bool {
 	}
 	switch name {
 	case "PI_CODING_AGENT_DIR", "PI_CODING_AGENT_SESSION_DIR", "PRIME_AGENT_CODING_AGENT_DIR", "HANA_HOME", "T3CODE_HOME",
-		"OPENCLAW_HOME", "OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH":
+		"OPENCLAW_HOME", "OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH", "QWENPAW_WORKING_DIR", "QWENPAW_SECRET_DIR":
 		return v == "~" || strings.HasPrefix(v, "~/") || (runtime.GOOS == "windows" && strings.HasPrefix(v, `~\`))
 	}
 	return false
