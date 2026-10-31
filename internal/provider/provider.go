@@ -563,7 +563,7 @@ type file struct {
 }
 
 // Path is the file the user's providers live in.
-func Path() string { return filepath.Join(appdir.Config(), "providers.json") }
+func Path() string { return appdir.Join(appdir.Config(), "providers.json") }
 
 // load is the file for a read that goes on without it: start-up, the
 // gateway, the catalog. One that can't be read is taken as empty there;

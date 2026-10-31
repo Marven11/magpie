@@ -16,7 +16,6 @@ import (
 	"math"
 	"net/url"
 	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -1401,7 +1400,7 @@ func renameInMap(m reflect.Value, from, to string) bool {
 }
 
 // Path is the settings file.
-func Path() string { return filepath.Join(Dir(), "settings.json") }
+func Path() string { return appdir.Join(Dir(), "settings.json") }
 
 // Dir is the folder every magpie file lives in: the data folder beside a
 // portable magpie (appdir.Portable), else ~/.config/magpie.

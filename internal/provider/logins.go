@@ -180,7 +180,7 @@ func LoginID(agent, user string) string {
 	return loginID(savedLogin{Agent: agent, User: user})
 }
 
-func loginsPath() string { return filepath.Join(filepath.Dir(Path()), "logins.json") }
+func loginsPath() string { return appdir.Join(filepath.Dir(Path()), "logins.json") }
 
 // lastLogins is the accounts last read from logins.json: a read that fails
 // (a file half there, one magpie can't open for a moment) is them, not no
