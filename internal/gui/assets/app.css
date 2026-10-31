@@ -912,6 +912,11 @@ body.window .field.solo { grid-column: auto; }
    at its top as .segs elsewhere do */
 .usage-head > .segs { align-self: center; }
 .usage-head > .ctx-range { display: flex; align-self: center; }
+/* a phone's days, in place of the strips beside the tabs (page.js) */
+.usage-range-menu { display: none; position: relative; align-items: center; gap: 4px; height: 30px; margin-left: -2px; padding: 0 4px 0 2px; border-radius: 7px; font-size: 15px; font-weight: 600; color: var(--fg); }
+.usage-range-menu svg { flex: none; color: var(--muted); transition: transform .15s var(--ease); }
+.usage-range-menu.open svg { transform: rotate(180deg); }
+.usage-range-menu:disabled { opacity: .55; }
 .subscription-usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; gap: 7px; margin-bottom: 8px; flex: none; }
 /* packed into columns (packUsage): each card as tall as itself, placed on
    rows a pixel high, the gap between cards in its place on them (#860) */
@@ -4028,6 +4033,21 @@ body.panel .modal { padding: 16px 12px; }
   body.web .usage-head { height: auto; min-height: 44px; flex-wrap: wrap; gap: 8px; }
   body.web .usage-head > .segs { max-width: 100%; flex-wrap: wrap; }
   body.web .usage-head > .grow, body.web .sess-tools > .grow { display: none; }
+  /* the head on a phone: the tabs across it, and under them one line, the
+     days as a menu, the sum, and the refresh as a dot and its figure */
+  body.web .usage-head { row-gap: 6px; column-gap: 4px; }
+  body.web .usage-head > #usageTab { flex: 1 1 100%; }
+  body.web .usage-head > #usageTab .opt { flex: 1 1 auto; padding: 0 4px; }
+  body.web .usage-head > :is(#period, #sessRange, #ctxRange) { display: none; }
+  body.web .usage-range-menu:not([hidden]) { display: inline-flex; }
+  body.web .usage-head > .usage-cost { order: 1; margin-left: auto; }
+  body.web .usage-head > .usage-refresh { order: 2; margin-right: 0; }
+  body.web .usage-head .usage-refresh .icon { width: 36px; color: var(--muted); }
+  body.web .usage-head .usage-refresh .sess-pick { position: relative; min-height: 0; height: 30px; gap: 5px; padding: 0 6px 0 2px; border-color: transparent; background: none; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  body.web .usage-head .usage-refresh .sess-pick::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+  body.web .usage-head .usage-refresh .sess-pick.live::before { background: var(--green); }
+  body.web .usage-head .usage-refresh .sess-pick svg { display: none; }
+  body.web .usage-head .usage-refresh .sess-pick::after, body.web .usage-range-menu::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
   body.web .sess-filter { order: 1; flex: 1 1 100%; width: 100%; }
   body.web .pv-head > .rt-mask { order: 2; }
   body.web .sess-pick { min-height: 44px; max-width: 100%; font-size: 14px; }
