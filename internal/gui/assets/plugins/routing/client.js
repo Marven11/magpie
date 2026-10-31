@@ -716,6 +716,7 @@ function routingPage(part) {
         : t("{name} has one key on — nothing to choose between.", { name: f.name });
     }
     if (f.rest) return t("Every one is resting after a failure, so {who}, first in line, is tried all the same.", { who: w });
+    if (f.creditsLast) return t("Every one here has used up its allowance and goes on on its credits, set to spend them only after everything else, so {who}, first in line, goes first.", { who: w });
     if (f.fallback) {
       const name = r.order.find((x) => !x.fallback)?.name || r.provider;
       return t("{name} is resting, so its fallback {fb} goes first.", { name, fb: `${f.provider}/${f.model}` });
@@ -908,6 +909,11 @@ function routingPage(part) {
       // behind the first by a group's weights or its order, which take
       // each member whole: not by what x has left (Creat.wu: a group in
       // a group by weight, its accounts at 91%, read as passed over)
+      if (x.creditsLast && f0 && !f0.creditsLast) {
+        // behind everything not on its credits, as the user set it
+        out.push(t("{who} has used up its allowance and goes on on its credits, which it is set to spend only after everything else: it is tried after every other account, key and fallback.", { who: who(x) }));
+        continue;
+      }
       const by = !x.rest && !x.sunk && f0 ? memberSplit(r, f0, x) : null;
       if (by && smart(x) && (x.known ? group(x) === "low" : someKnown(x))) {
         if (!told.has(by.member)) {
@@ -958,6 +964,7 @@ function routingPage(part) {
       case "resting": return t("{who} answered this conversation last, but it is resting, so the conversation moves.", { who: last });
       case "spent": return t("{who} answered this conversation last, but its allowance is all but used up, so the conversation moves.", { who: last });
       case "reserve": return t("{who} answered this conversation last, but it is in reserve while those before it in the list can take requests, so the conversation moves back to them.", { who: last });
+      case "credits": return t("{who} answered this conversation last, but it is on its credits now, set to spend them only after everything else, so the conversation moves to {first}.", { who: last, first: who(r.order[0]) });
       case "gone": return t("{who} answered this conversation last, but it is no longer one to route to.", { who: last });
       case "order": return t("{who} answered this conversation last, but the group goes in order and {first}, ahead of it, is ready again, so turn {n} goes back to {first}.", { who: last, first: who(r.order[0]), n: a.turn });
       case "main": return t("{who}, a fallback, answered this conversation last, but the provider's own {first} is ready again, so turn {n} goes back to it.", { who: last, first: who(r.order[0]), n: a.turn });
@@ -2625,7 +2632,8 @@ function routingPage(part) {
       else if (w.free) s = t("free · costs nothing");
       else if (w.known) {
         const soon = usedRenews(w);
-        s = !w.routing && w.used >= 98 && w.credits ? quota(w, "{n} used · on credits", "{n} left · on credits")
+        s = w.creditsLast && !r.order[0]?.creditsLast ? quota(w, "{n} used · on credits · after the others", "{n} left · on credits · after the others")
+          : !w.routing && w.used >= 98 && w.credits ? quota(w, "{n} used · on credits", "{n} left · on credits")
           : !w.routing && w.used >= 98 ? quota(w, "{n} used · all but used up", "{n} left · all but used up")
           : !w.routing && w.used >= 90 ? quota(w, "{n} used · kept for last", "{n} left · kept for last")
           : (b = behindWhy(r, w)) === "kept" ? quota(w, "{n} used · conversation kept on another", "{n} left · conversation kept on another")

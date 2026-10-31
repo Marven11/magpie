@@ -17569,7 +17569,7 @@ function panelQuotaCard(q) {
       }
       if (credits) {
         if (policy) say.append(document.createTextNode(" · "));
-        say.append(el("b", "", t("Use credits:")), document.createTextNode(" " + t(creditsOn(q) ? "On" : "Off")));
+        say.append(el("b", "", t("Use credits:")), document.createTextNode(" " + t(creditsLast(q) ? "On, after everything else" : creditsOn(q) ? "On" : "Off")));
       }
       row.append(say);
       card.append(row);
@@ -17645,12 +17645,8 @@ function resetUseTitle(q) {
     + "\n" + t("This account's windows start again at once, as if none had been used. You're asked before anything is spent.");
 }
 
-// A Codex account spending a reset by itself is a standing say of the
-// account's, kept by its name (settings' codexAutoReset, the CLI's quota
-// auto-reset): when its week is used up and no other account can answer,
-// one a week at most, and the one about to run out unused shortly before
-// it does. Off unless the user turns it on; nothing for an account with no
-// name to keep it by. autoResetKept: the accounts that can have it.
+// Whether a Codex account spends a reset by itself (codexAutoReset, the CLI's
+// quota auto-reset), off unless turned on; only a named account can have it.
 const AUTO_RESET_KEPT = { codex: "codexAutoReset" };
 function autoResetKept(q) {
   return !!(q.user && AUTO_RESET_KEPT[q.provider] && !q.resets?.byWindow);
@@ -17659,10 +17655,8 @@ function autoResetOn(q) {
   const w = autoResetWhen(q);
   return w.week || w.expiring;
 }
-// autoResetWhen: at which of the two times the account uses one by itself,
-// each its own switch (#2078, alanwalk: Codex resets the week often enough
-// that a used-up week is worth waiting out, while a card about to run out
-// isn't); an account not kept to one (codexAutoResetOnly) uses one at both.
+// autoResetWhen: the times it uses one by itself, a switch each (#2078);
+// one not kept to one (codexAutoResetOnly) uses one at both.
 function autoResetWhen(q) {
   if (!autoResetKept(q) || !(state.settings?.[AUTO_RESET_KEPT[q.provider]] || []).includes(q.user.toLowerCase())) return { week: false, expiring: false };
   return autoResetWhenOf(state.settings?.codexAutoResetOnly?.[q.user.toLowerCase()]);
@@ -17688,9 +17682,7 @@ function autoResetStatus(user, w) {
   return t("{who} no longer uses a reset by itself", { who: user });
 }
 
-// autoResetRow is that say on an account's card, whether or not it holds a
-// reset now, so it can be set ahead of one (#719): each of the two times it
-// uses one on a line of its own, in words, with its switch (#2078).
+// autoResetRow: that say on an account's card, each time on a line with its switch (#719, #2078).
 function autoResetRow(q, cls) {
   if (!autoResetKept(q)) return null;
   const on = autoResetOn(q);
@@ -17714,11 +17706,8 @@ function autoResetRow(q, cls) {
   return row;
 }
 
-// resetsUsedLine: the last of the account's resets magpie used, when and
-// why, on a line of its own under the say; every one kept in its title.
-// A reset gone from the card otherwise read the same whether magpie used
-// it, the user did, or it ran out (foobra12 on Discord: 我发现刚才好像不小心
-// 自动给我使用了一张). Nothing when magpie used none.
+// resetsUsedLine: the last reset magpie used, when and why; every one in its
+// title (foobra12 on Discord). Nothing when magpie used none.
 function resetsUsedLine(q) {
   const used = q.resetsUsed || [];
   if (!used.length) return null;
@@ -17738,11 +17727,8 @@ function autoResetTitle(on) {
     : "Off: this account's resets are used only by hand. Turned on, one is used by itself when its week is used up and no other account can answer, one a week at most, and the one about to run out {lead} before it does, if the account has been used, or at once when the account is held up until after then. Otherwise the five hours running out never uses one.", resetLeadVars());
 }
 
-// The reset about to run out is used this long before it does, for every
-// account with "before one expires" on (settings' codexResetLead, the CLI's
-// quota auto-reset lead; the owner, 10-30): half an hour unless set, and a
-// value out of range is the half hour, as the gateway reads it.
-// RESET_LEADS are the choices, in minutes.
+// How long before a reset runs out it is used (codexResetLead; the owner, 10-30):
+// half an hour unless set or out of range, as the gateway reads it. RESET_LEADS in minutes.
 const RESET_LEADS = [15, 30, 60, 120, 180, 360, 720, 1440];
 function resetLeadMinutes(s = state?.settings) {
   const m = s?.codexResetLead;
@@ -17753,10 +17739,7 @@ function resetLeadWords(m) {
 }
 const resetLeadVars = (s) => ({ lead: resetLeadWords(resetLeadMinutes(s)) });
 
-// autoResetBrief: an account in brief says it too, beside its name — the
-// resets it holds and the say — with its switch: the account a week ran
-// out on is the one not served, so the one shown in brief, and its switch
-// only in full was lost (#801, ezdemo: 自动使用重置卡的开关的入口找不到了).
+// autoResetBrief: the say and its switch beside an account's name in brief (#801).
 function autoResetBrief(q) {
   if (!autoResetKept(q)) return null;
   const on = autoResetOn(q);
@@ -17771,9 +17754,7 @@ function autoResetBrief(q) {
   return s;
 }
 
-// autoResetButton turns that on or off: a switch, its words beside it. With
-// c (one of AUTO_RESET_CASES), at that time alone, the other kept; without,
-// the brief's switch, at both: off when either is on, else on at both.
+// autoResetButton: a switch; with c, that time alone, else both (the brief's).
 function autoResetButton(q, c) {
   const on = c ? autoResetWhen(q)[c.id] : autoResetOn(q);
   const b = el("button", "lib-switch auto-reset" + (on ? " on" : ""));
@@ -17802,21 +17783,20 @@ function autoResetButton(q, c) {
   return b;
 }
 
-// Whether a Codex account spends its credits once one of its windows is
-// used up, a standing say of the account's kept by its name (settings'
-// codexNoCredits, the CLI's quota credits): on unless the user turns it
-// off. Off, routing holds the account as used up till the window renews,
-// as a usage cap does at its share. creditsKept: the accounts that can
-// have it.
+// Whether a Codex account spends its credits once a window is used up
+// (settings' codexNoCredits, on by default; off, routing holds it till the
+// window renews), and spends them last (codexCreditsLast, gokoshiki).
 function creditsKept(q) {
   return !!(q.user && q.provider === "codex");
 }
 function creditsOn(q) {
   return creditsKept(q) && !(state.settings?.codexNoCredits || []).includes(q.user.toLowerCase());
 }
+function creditsLast(q) {
+  return creditsOn(q) && (state.settings?.codexCreditsLast || []).includes(q.user.toLowerCase());
+}
 
-// creditsRow is that say on an account's card, credits held or not, so it
-// can be set ahead: what it does, in words, and the switch.
+// creditsRow: that say on an account's card, its switches beside it.
 function creditsRow(q, cls) {
   if (!creditsKept(q)) return null;
   const on = creditsOn(q);
@@ -17826,6 +17806,14 @@ function creditsRow(q, cls) {
   say.title = creditsTitle(on);
   row.dataset.user = q.user;
   row.append(say, creditsButton(q));
+  if (on) {
+    const last = creditsLast(q);
+    const line = el("div", "ar-case ar-credits-last" + (last ? " on" : ""));
+    const words = el("span", "ar-case-say", t("Only after every other account, key and fallback"));
+    words.title = t(last ? "On: past its windows, it goes after every other account, key and fallback, so its credits are spent last. Click to turn it off." : "Off: past its windows, it keeps its place and answers on its credits there.");
+    line.append(words, creditsSwitch(q, "credits-last", last, words.title, { on: true, last: !last }, t("Use credits") + " · " + words.textContent, last ? "{who} spends its credits when its windows run out" : "{who} spends its credits only after everything else"));
+    row.append(line);
+  }
   return row;
 }
 function creditsTitle(on) {
@@ -17833,24 +17821,26 @@ function creditsTitle(on) {
     : "Off: once one of this account's windows is used up, by magpie's latest reading (refreshed about every minute), magpie holds it till the window renews, and requests go to your other accounts, groups and fallbacks rather than spending its credits. With none of them left, a request is refused with why, unless Auto-use resets is on and its week is used up: then a reset is used first.");
 }
 
-// creditsButton turns that on or off: a switch, its words beside it.
 function creditsButton(q) {
   const on = creditsOn(q);
-  const b = el("button", "lib-switch use-credits" + (on ? " on" : ""));
+  return creditsSwitch(q, "use-credits", on, creditsTitle(on), { on: !on }, t("Use credits"), on ? "{who} no longer spends its credits: held when a window runs out" : "{who} spends its credits when its windows run out");
+}
+function creditsSwitch(q, cls, on, title, body, label, said) {
+  const b = el("button", "lib-switch " + cls + (on ? " on" : ""));
   b.type = "button";
   b.setAttribute("role", "switch");
   b.setAttribute("aria-checked", String(on));
-  b.setAttribute("aria-label", t("Use credits"));
-  b.title = creditsTitle(on);
+  b.setAttribute("aria-label", label);
+  b.title = title;
   b.append(el("i"));
   b.onclick = async (e) => {
     e.stopPropagation();
     if (b.disabled) return;
     b.disabled = true;
     try {
-      prefs = await writingPrefs(api("settings/codex-credits", { user: q.user, on: !on }));
+      prefs = await writingPrefs(api("settings/codex-credits", { user: q.user, ...body }));
       state.settings = prefs;
-      status(t(on ? "{who} no longer spends its credits: held when a window runs out" : "{who} spends its credits when its windows run out", { who: q.user }), "ok");
+      status(t(said, { who: q.user }), "ok");
       renderQuotas();
     } catch (err) {
       b.disabled = false;

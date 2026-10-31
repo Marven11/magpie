@@ -1998,6 +1998,10 @@ body.panel .profiles #save { height: 25px; } /* the field's: the line keeps its 
 .subscription-card.several .quota-credits + .subscription-account { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
 .pq-autoreset, .pq-credits { grid-column: 1 / -1; margin-top: 5px; padding-top: 7px; border-top: 1px solid var(--line-2); font-size: 11px; }
 .pq-resets + .pq-autoreset, .pq-autoreset + .pq-credits { margin-top: 5px; padding-top: 0; border-top: 0; }
+/* spending them only after everything else, a line of its own under the
+   say while the credits are spent at all, its switch at the line's end */
+.quota-credits, .pq-credits { flex-wrap: wrap; row-gap: 3px; }
+.ar-credits-last { flex-basis: 100%; }
 .ar-say { flex: 1; min-width: 0; line-height: 1.35; }
 .ar-say b { font-weight: 500; color: var(--fg-2); }
 .ar-used { display: block; margin-top: 2px; color: var(--faint); }

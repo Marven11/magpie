@@ -1734,6 +1734,24 @@ func spendsCredits(p provider.Provider, a provider.Allowance) bool {
 	return p.Account != nil && p.Account.UsageAgent() == "codex" && a.OnCredits() && provider.CodexCredits(p.Account.User)
 }
 
+// creditsLast: c is a Codex account on its credits (onCredits) that the
+// user set to spend them only after everything else
+// (provider.CodexCreditsLast), and by its last reading a window for the
+// model is used up, where an account set not to spend them is held: it
+// goes on on its credits now, so it is tried after every candidate that
+// isn't (restLast), in its place among those that are. A call ChatGPT
+// counts in no window (freeOnChatGPT) spends no credits, so it stays.
+// Asked for gokoshiki on Discord: a subscription, then an API key, then
+// the subscription's credits.
+func (c candidate) creditsLast(now time.Time) bool {
+	acct := c.p.Account
+	if acct == nil || !provider.CodexCreditsLast(acct.User) || freeOnChatGPT(c.model, acct.Plan) {
+		return false
+	}
+	a, _ := c.allowance()
+	return spendsCredits(c.p, a) && a.CapHeld(c.model, provider.WindowCaps{Credits: true}, now) != nil
+}
+
 // allowance is the candidate's allowance as last known: a subscription
 // account's, or a key's own windows when magpie reads them (a sub2api
 // key's limits, provider.KeyAllowance). ok is false when it isn't known.

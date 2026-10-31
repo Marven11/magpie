@@ -300,6 +300,12 @@ type Settings struct {
 	// groups and fallbacks, where by default the vendor answers on its
 	// credits (see provider.CodexCredits).
 	CodexNoCredits []string `json:"codexNoCredits,omitempty"`
+	// CodexCreditsLast are the ChatGPT accounts (lower-case) that spend
+	// their credits only after everything else: once a usage window is
+	// used up, routing tries the account after every account, key and
+	// fallback not on its credits, instead of in its place. Not one of
+	// CodexNoCredits: an account set not to spend them is held.
+	CodexCreditsLast []string `json:"codexCreditsLast,omitempty"`
 	// WorkBuddyCheckin presses WorkBuddy's daily check-in (签到) for each
 	// signed-in WorkBuddy (China) account once a Beijing day, claiming the
 	// credits it gives while its event runs.
@@ -2076,6 +2082,10 @@ func saveOwn(s Settings, recording, reads bool) error {
 		s.CodexNoCredits[i] = strings.ToLower(u)
 	}
 	s.CodexNoCredits = ids(s.CodexNoCredits)
+	for i, u := range s.CodexCreditsLast {
+		s.CodexCreditsLast[i] = strings.ToLower(u)
+	}
+	s.CodexCreditsLast = ids(s.CodexCreditsLast)
 	s.TrayUsage = ""
 	if len(s.TrayUsages) > 0 {
 		s.TrayUsage = s.TrayUsages[0]

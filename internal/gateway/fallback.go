@@ -1081,26 +1081,37 @@ func asideOf(cs []candidate, q provider.Provider, fallback bool, from provider.P
 	return out
 }
 
-// restLast moves those resting after a recent failure behind the rest.
+// restLast moves those resting after a recent failure behind the rest,
+// and a Codex account set to spend its credits last that has gone onto
+// them (creditsLast) behind both, those in their own order.
 func restLast(out []candidate, pl planned) ([]candidate, planned) {
 	if len(out) == 1 {
 		if r, ok := restingOf(out[0]); ok {
 			pl.order[0].Rest = &r // tried all the same: there is no other
 		}
+		pl.order[0].CreditsLast = out[0].creditsLast(time.Now())
 		return out, pl
 	}
-	var ready, resting []candidate
-	var wReady, wResting []Weighed
+	now := time.Now()
+	var ready, resting, last []candidate
+	var wReady, wResting, wLast []Weighed
 	for i, c := range out {
-		if r, ok := restingOf(c); ok {
+		r, isResting := restingOf(c)
+		if isResting {
 			pl.order[i].Rest = &r
+		}
+		switch {
+		case c.creditsLast(now):
+			pl.order[i].CreditsLast = true
+			last, wLast = append(last, c), append(wLast, pl.order[i])
+		case isResting:
 			resting, wResting = append(resting, c), append(wResting, pl.order[i])
-		} else {
+		default:
 			ready, wReady = append(ready, c), append(wReady, pl.order[i])
 		}
 	}
-	pl.order = append(wReady, wResting...)
-	return append(ready, resting...), pl
+	pl.order = append(append(wReady, wResting...), wLast...)
+	return append(append(ready, resting...), last...), pl
 }
 
 // probeOne keeps, of the candidates resting after a failure, only the one

@@ -341,6 +341,10 @@ type Weighed struct {
 	// credits, and is let spend them: all but used up, it still answers,
 	// and goes before those used up with nothing to go on with
 	Credits bool `json:"credits,omitempty"`
+	// CreditsLast: such an account, on its credits now, that the user set
+	// to spend them only after everything else: tried after every
+	// candidate not on its credits (restLast)
+	CreditsLast bool `json:"creditsLast,omitempty"`
 	// Rank: its place in its provider's own list of accounts or keys, the
 	// order the provider's page shows and a drag sets (#217); routing may
 	// weigh them in another
