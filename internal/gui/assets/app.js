@@ -24286,13 +24286,10 @@ window.noteAccounts = noteAccounts;
   // it is no account, so only an address is hidden there (#1973: the
   // project lingting-react-ui with the account lingting)
   const NAMELESS = "#sessionsPane, #contextPane";
-  // A switch's chosen is the Hide accounts choice made on this computer;
-  // until one is, the accounts are hidden while Privacy masks personal
-  // data (inaction on Discord: another computer with it on still showed
-  // the addresses). It hides in the whole window, its menus and dialogs
-  // (PaulT, Zhenbao TONG on Discord), by the switch of the page in sight:
-  // Routing's and Usage's, or the Providers page's own (#feedback: the one
-  // on Routing hid Providers too). The tray panel follows the first.
+  // A switch's chosen is the choice made here; till then accounts hide
+  // while Privacy masks personal data (inaction). The whole window
+  // follows the switch of the page in sight: Routing's and Usage's, or
+  // Providers' own (#feedback). The tray panel follows the first.
   const sw = [["magpie.maskEmails", ["#rtMask", "#usageMask"]], ["magpie.maskProviders", ["#pvMask"]]].map(([k, bs]) => {
     let c = null;
     try { c = localStorage.getItem(k); } catch {}
