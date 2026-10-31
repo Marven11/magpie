@@ -276,7 +276,7 @@ func plugged(home string, p *agentplug.Agent) *Agent {
 	wire := func(ref string) error {
 		var model map[string]any
 		var models []map[string]any
-		for _, m := range magpieModels(id) {
+		for _, m := range sharedModels(id) {
 			j := map[string]any{"id": m.ID, "name": m.Name, "context": m.Context, "output": m.Output, "images": m.Images, "efforts": m.Efforts}
 			if j["efforts"] == nil {
 				j["efforts"] = []string{}

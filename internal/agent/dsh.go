@@ -758,7 +758,7 @@ func dshWired(items []dshItem) bool { return len(dshRoutesIn(items)) > 0 }
 // written again would list it, where one naming a model magpie no longer
 // gives dsh would not.
 func dshServes(id string) bool {
-	for _, m := range magpieModels("dsh") {
+	for _, m := range sharedModels("dsh") {
 		if m.ID == id {
 			return true
 		}
@@ -891,7 +891,7 @@ func dshCheck(dir, gw string) string {
 	// for the round to write it from. A profile taken off magpie for real,
 	// its start with it, is said as before, and so is one still on the old
 	// wiring, which dshSync moves rather than this round writing beside.
-	canWriteBack := len(magpieModels("dsh")) > 0
+	canWriteBack := len(sharedModels("dsh")) > 0
 	for _, f := range files[1:] {
 		_, items, err := dshRead(f)
 		if err != nil || dshWired(dshOver(dir, items)) {
@@ -997,7 +997,7 @@ func dshCheck(dir, gw string) string {
 // nothing can (no catalog to write it from — the key check still runs, since
 // a route written without its key would fail the turn all the same).
 func dshCheckStripped(dir, gw string) string {
-	if len(magpieModels("dsh")) == 0 {
+	if len(sharedModels("dsh")) == 0 {
 		return "DeepSeek Harness starts on one of magpie's models, but magpie's route is out of " + dshHomePatch(dir) + " and the profiles' and there is no model list to write it back from; pick a model of magpie's again once it has one"
 	}
 	env := filepath.Join(dir, ".env")
@@ -1813,7 +1813,7 @@ func dshModelLevels(efforts []string) ([]string, *dshPiLevels) {
 
 // dshLevels are the thinking levels dsh offers for a catalog model.
 func dshLevels(ref string) []string {
-	for _, m := range magpieModels("dsh") {
+	for _, m := range sharedModels("dsh") {
 		if m.ID == ref {
 			levels, _ := dshModelLevels(m.Efforts)
 			return levels

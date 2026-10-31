@@ -124,7 +124,7 @@ func commandCodeIn(at place) *Agent {
 			},
 			Options: func(cur map[string]string) []Option {
 				if ref, ok := strings.CutPrefix(cur["model"], magpieID+"/"); ok {
-					for _, m := range magpieModels("commandcode") {
+					for _, m := range sharedModels("commandcode") {
 						if m.ID != ref {
 							continue
 						}
@@ -150,7 +150,7 @@ func commandCodeIn(at place) *Agent {
 // any, and Command Code refuses one written out.
 func ccProviderJSONAt(v1 string) any {
 	ms := map[string]any{}
-	for _, m := range magpieModels("commandcode") {
+	for _, m := range sharedModels("commandcode") {
 		e := map[string]any{"name": m.Name}
 		var efforts []string
 		for _, x := range m.Efforts {

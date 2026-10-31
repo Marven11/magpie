@@ -76,7 +76,7 @@ func droidEntries() []droidEntry { return droidEntriesAt(gateway.URL()) }
 // droidEntriesAt are droidEntries for a droid reaching the gateway at gw.
 func droidEntriesAt(gw string) []droidEntry {
 	var out []droidEntry
-	for _, m := range magpieModels("droid") {
+	for _, m := range sharedModels("droid") {
 		e := droidEntry{Model: m.ID, ID: droidID + m.ID, APIKey: keyAt(gw),
 			Provider: "generic-chat-completion-api", MaxContextLimit: m.Context, MaxOutputTokens: maxTokens(m), NoImageSupport: !m.Images}
 		switch want := droidWants(m.ID); {

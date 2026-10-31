@@ -297,7 +297,7 @@ func qoderProvider(agent, model string) map[string]any {
 // at v1.
 func qoderProviderAt(agent, model, v1 string) map[string]any {
 	var ms []map[string]any
-	for _, m := range magpieModels(agent) {
+	for _, m := range sharedModels(agent) {
 		caps := map[string]any{"tools": true, "vision": m.Images}
 		var levels []string
 		for _, e := range m.Efforts {

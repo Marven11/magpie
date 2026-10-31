@@ -345,7 +345,7 @@ func astrbotWired(raw []byte, on bool, gw, key string) ([]byte, error) {
 	var wantModels []map[string]any
 	if on {
 		wantSource = astrbotSourceJSON(gw, key)
-		for _, m := range magpieModels("astrbot") {
+		for _, m := range sharedModels("astrbot") {
 			wantModels = append(wantModels, astrbotModelJSON(m))
 		}
 	}

@@ -104,7 +104,7 @@ func jcodeWant(was []jcodeModel) []jcodeModel {
 		kept[m.ID] = m.ReasoningEffort
 	}
 	var out []jcodeModel
-	for _, m := range magpieModels("jcode") {
+	for _, m := range sharedModels("jcode") {
 		ctx := m.Context
 		if ctx <= 0 {
 			ctx = jcodeContext

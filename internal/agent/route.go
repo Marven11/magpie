@@ -210,6 +210,15 @@ func magpieModels(agent string) []catalog.Model {
 	return builtModels.get(agent, func() []catalog.Model { return buildModels(agent) })
 }
 
+// sharedModels is magpieModels without the caller's own copy, for one
+// that only reads it: a range over it copies each model, so it can't
+// write into the list kept. A copy per call was 37 MB of what forty polls
+// of the window allocated with real accounts, most of it Pi's and Claude
+// Code's thinking levels, read per field.
+func sharedModels(agent string) []catalog.Model {
+	return builtModels.shared(agent, func() []catalog.Model { return buildModels(agent) })
+}
+
 // builtModels is what magpieModels built last, per agent. The window asks
 // /api/drift every 15s, and each agent's Drift asked for its list again
 // per field, each built whole with its prices and Vision's ranking of the

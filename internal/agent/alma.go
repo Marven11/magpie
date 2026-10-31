@@ -238,7 +238,7 @@ func almaMagpie(ps []almaProvider) *almaProvider {
 // and each one's name and what magpie knows it can do (almaCaps).
 func almaModels() (ids []string, known []map[string]any) {
 	ids, known = []string{}, []map[string]any{}
-	for _, m := range magpieModels("alma") {
+	for _, m := range sharedModels("alma") {
 		ids = append(ids, m.ID)
 		k := map[string]any{"id": m.ID, "name": m.Name}
 		caps := almaCaps(m)

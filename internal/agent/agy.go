@@ -223,7 +223,7 @@ func agyIn(at place) *Agent {
 			}
 		}
 		if with {
-			for _, m := range magpieModels("agy") {
+			for _, m := range sharedModels("agy") {
 				ms[magpieID+"/"+m.ID] = map[string]string{"apiProvider": "API_PROVIDER_GOOGLE_GEMINI", "modelName": m.ID}
 			}
 		}

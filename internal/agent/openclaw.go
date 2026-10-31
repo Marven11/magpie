@@ -159,7 +159,7 @@ func openClawWant(raw gjson.Result) []any {
 		}
 	}
 	out := []any{}
-	for _, m := range magpieModels("openclaw") {
+	for _, m := range sharedModels("openclaw") {
 		ctx := m.Context
 		if ctx <= 0 {
 			ctx = openClawContext

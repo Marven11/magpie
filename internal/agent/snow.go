@@ -430,7 +430,7 @@ func snowIn(at place) *Agent {
 				if !ok {
 					return nil
 				}
-				for _, m := range magpieModels("snow") {
+				for _, m := range sharedModels("snow") {
 					if m.ID == ref && len(m.Efforts) > 0 {
 						return append([]Option{{Value: "", Takes: "off"}}, static(m.Efforts...)...)
 					}
@@ -493,7 +493,7 @@ func snowProfileFor(from []byte, ours bool, v1, key, ref string, wrote map[strin
 	}
 	ctx, out := snowContext, snowOutput
 	sees := false
-	for _, m := range magpieModels("snow") {
+	for _, m := range sharedModels("snow") {
 		if m.ID == ref {
 			if m.Context > 0 {
 				ctx = m.Context

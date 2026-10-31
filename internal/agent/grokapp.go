@@ -129,7 +129,7 @@ func grokAppWant(was string) []grokAppModel {
 		}
 	}
 	var out []grokAppModel
-	for _, m := range magpieModels("grok-app") {
+	for _, m := range sharedModels("grok-app") {
 		e := grokAppModel{ID: m.ID, Name: m.Name, ContextWindow: m.Context}
 		if e.Name == "" {
 			e.Name = m.ID

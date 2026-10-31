@@ -227,7 +227,7 @@ func writeMiniMaxEntryAt(path, gw string) error {
 	models := &yaml.Node{Kind: yaml.MappingNode}
 	// keys is each model's key, its flat one where it has one
 	keys := map[string]string{}
-	for _, m := range magpieModels("minimax-code") {
+	for _, m := range sharedModels("minimax-code") {
 		key := mcodeKey(flat, m.ID)
 		keys[m.ID] = key
 		mn := yamlGet(old, key)

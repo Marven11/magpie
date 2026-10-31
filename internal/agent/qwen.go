@@ -67,7 +67,7 @@ type qwenGen struct {
 // v1.
 func qwenEntriesAt(v1 string) []qwenEntry {
 	var out []qwenEntry
-	for _, m := range magpieModels("qwen") {
+	for _, m := range sharedModels("qwen") {
 		// name is what /model shows, the id beside it when they differ:
 		// the model's name as every agent's list calls it, by the Provider
 		// in model names setting (magpie/<id> before, which none of the

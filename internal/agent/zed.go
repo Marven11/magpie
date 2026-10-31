@@ -204,7 +204,7 @@ func zedProviderJSON(path string) map[string]any {
 		}
 	}
 	models := []any{}
-	for _, m := range magpieModels("zed") {
+	for _, m := range sharedModels("zed") {
 		context := m.Context
 		if context == 0 {
 			context = 128000 // Zed requires a context window for every custom model.

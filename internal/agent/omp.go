@@ -648,7 +648,7 @@ func ompProvider() ompProviderEntry { return ompProviderAt(gateway.URL(), ompVer
 func ompProviderAt(gw, version string) ompProviderEntry {
 	takesMax := ompTakesMax(version)
 	ms := []ompModel{}
-	for _, m := range magpieModels("omp") {
+	for _, m := range sharedModels("omp") {
 		e := ompModel{ID: m.ID, Name: m.Name, Context: m.Context, MaxTokens: maxTokens(m)}
 		if p := m.Price; p != nil {
 			e.Cost = &ompCost{Input: p.Input, Output: p.Output, CacheRead: p.CacheRead, CacheWrite: p.CacheWrite}

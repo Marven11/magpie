@@ -615,7 +615,7 @@ type hermesProviderEntry struct {
 // release on, so the header names it for the gateway's usage view.
 func hermesProviderAt(gw string) hermesProviderEntry {
 	ms := []string{}
-	for _, m := range magpieModels("hermes") {
+	for _, m := range sharedModels("hermes") {
 		ms = append(ms, m.ID)
 	}
 	return hermesProviderEntry{

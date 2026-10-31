@@ -510,7 +510,7 @@ func claudeLight(main string) string {
 		return id
 	}
 	best := ""
-	for _, m := range magpieModels("claude") {
+	for _, m := range sharedModels("claude") {
 		if !strings.HasPrefix(m.ID, prefix) {
 			continue
 		}
@@ -581,7 +581,7 @@ func tierWith(model, effort string) string {
 // magpie knows the model has, else those Claude Code sends it.
 func tierEfforts(model string) []string {
 	id := strings.TrimSuffix(model, "[1m]")
-	for _, m := range magpieModels("claude") {
+	for _, m := range sharedModels("claude") {
 		if m.ID == id && len(m.Efforts) > 0 {
 			return slices.DeleteFunc(slices.Clone(m.Efforts), func(l string) bool { return !contains(provider.MemberEfforts, l) })
 		}
@@ -1186,7 +1186,7 @@ func claudeIn(at place) *Agent {
 		}
 		if main != "" {
 			window := map[string]int{}
-			for _, m := range magpieModels("claude") {
+			for _, m := range sharedModels("claude") {
 				window[m.ID] = m.Context
 			}
 			// a tier fixed at an effort is handed Claude Code with it, and
@@ -1247,7 +1247,7 @@ func claudeIn(at place) *Agent {
 			return false
 		}
 		window := map[string]int{}
-		for _, m := range magpieModels("claude") {
+		for _, m := range sharedModels("claude") {
 			window[m.ID] = m.Context
 		}
 		for _, v := range pickerRefs() {
@@ -2487,7 +2487,7 @@ func claudeAliasOption(v string, ms []catalog.Model, tier func(string) string) (
 // picker that lists Claude Code's own models above them.
 func claudeViaMagpie(fold bool) []Option {
 	big := map[string]bool{}
-	for _, m := range magpieModels("claude") {
+	for _, m := range sharedModels("claude") {
 		big[m.ID] = m.Context >= 1_000_000
 	}
 	opts := viaMagpie("claude", "")
@@ -2513,7 +2513,7 @@ func claude1M() func(ref string) string { return claude1MFor("claude") }
 func claude1MFor(agent string) func(ref string) string {
 	const mark = "[1m]"
 	window := map[string]int{}
-	for _, m := range magpieModels(agent) {
+	for _, m := range sharedModels(agent) {
 		window[m.ID] = m.Context
 	}
 	return func(ref string) string {
@@ -2581,7 +2581,7 @@ func claudeLongMain(main string) bool {
 func claudeWindow(main string, tiers map[string]string) int {
 	const mark = "[1m]"
 	window := map[string]int{}
-	for _, m := range magpieModels("claude") {
+	for _, m := range sharedModels("claude") {
 		window[m.ID] = m.Context
 	}
 	if !strings.HasSuffix(main, mark) {
@@ -2635,7 +2635,7 @@ func claudeOutput(models ...string) int {
 		return 0
 	}
 	output := map[string]int{}
-	for _, m := range magpieModels("claude") {
+	for _, m := range sharedModels("claude") {
 		output[m.ID] = m.Output
 	}
 	n := 0

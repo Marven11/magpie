@@ -222,7 +222,7 @@ type hanakoProviderEntry struct {
 // over an older one keeps what the new one leaves out.
 func hanakoProvider() hanakoProviderEntry {
 	ms := []hanakoModel{}
-	for _, m := range magpieModels("hanako") {
+	for _, m := range sharedModels("hanako") {
 		ms = append(ms, hanakoModel{ID: m.ID, Name: m.Name, Context: m.Context, MaxOutput: maxTokens(m),
 			Image: m.Images, Reasoning: len(m.Efforts) > 0, XHigh: slices.Contains(m.Efforts, "xhigh")})
 	}
