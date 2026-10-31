@@ -1493,6 +1493,9 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		// stream's failure, not a bare EOF to puzzle over, and the row
 		// says why instead of a clean 200 with no usage (#3377)
 		call.Status, call.Error = http.StatusBadGateway, said
+		// after a blank line, so a line the cut left half written can't
+		// take the events streamError writes into its data (#2446, #2580)
+		w.Write([]byte("\n\n"))
 		streamError(w, provider.Responses, call.Model, call.Status, said)
 	}
 	end(call.Status, call.Error, uu.Input+uu.Output+uu.CacheRead+uu.CacheWrite, uu.Output)
