@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,21 +27,58 @@ func readCodexUsage(t *testing.T, used func() float64, resets time.Time) {
 	t.Cleanup(func() { provider.LoginUsageVia(nil) })
 }
 
-// waitUsed has codex's windows read again and waits till they say used,
-// then a moment for the renewal a reading tells of to land.
+// waitUsed has codex's windows read again and waits till they say used.
 func waitUsed(t *testing.T, used float64) {
 	t.Helper()
 	provider.StaleAllowance("codex", "me@example.com")
 	for deadline := time.Now().Add(10 * time.Second); ; {
 		a := provider.Allowances("codex")["me@example.com"]
 		if len(a) > 0 && a[0].Used == used {
-			time.Sleep(100 * time.Millisecond)
 			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("the reading never said %v%%: %+v", used, a)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// renewedTold is the channel the next telling of renewed for codex's
+// me@example.com goes to. The gateway's own hook was registered first
+// (init), and hooks are told in turn, so by the time this one is told
+// the gateway's lifting has run.
+var renewedTold struct {
+	once sync.Once
+	ch   atomic.Pointer[chan struct{}]
+}
+
+// armRenewed has the next renewed telling for codex's me@example.com
+// signalled, and returns a wait for it.
+func armRenewed(t *testing.T) func() {
+	t.Helper()
+	renewedTold.once.Do(func() {
+		provider.OnRenewed(func(agent, user string) {
+			if agent != "codex" || user != "me@example.com" {
+				return
+			}
+			if ch := renewedTold.ch.Load(); ch != nil {
+				select {
+				case *ch <- struct{}{}:
+				default:
+				}
+			}
+		})
+	})
+	ch := make(chan struct{}, 1)
+	renewedTold.ch.Store(&ch)
+	t.Cleanup(func() { renewedTold.ch.Store(nil) })
+	return func() {
+		t.Helper()
+		select {
+		case <-ch:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the reading that found the window less than full told no renewal")
+		}
 	}
 }
 
@@ -79,13 +118,12 @@ func TestReadingKeepsARefusalsRest(t *testing.T) {
 	readCodexUsage(t, func() float64 { return used }, resets)
 	waitUsed(t, 100)
 	restByRefusal(t, id, resets)
+	told := armRenewed(t)
 	used = 80
 	waitUsed(t, 80)
-	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		if _, ok := restOf(id); !ok {
-			t.Fatal("a reading that found the window less than full lifted the refusal's rest, due at", resets.Format(time.TimeOnly))
-		}
-		time.Sleep(10 * time.Millisecond)
+	told()
+	if _, ok := restOf(id); !ok {
+		t.Fatal("a reading that found the window less than full lifted the refusal's rest, due at", resets.Format(time.TimeOnly))
 	}
 }
 
@@ -118,12 +156,11 @@ func TestAutoVisionKeepsOffARefusedAccount(t *testing.T) {
 	if m := AutoVision(); m != "keyed/eye" {
 		t.Fatalf("AutoVision = %q with codex refused till %s", m, resets.Format(time.TimeOnly))
 	}
+	told := armRenewed(t)
 	used = 80
 	waitUsed(t, 80)
-	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		if m := AutoVision(); m != "keyed/eye" {
-			t.Fatalf("AutoVision = %q, back on the refused account, before its reset", m)
-		}
-		time.Sleep(10 * time.Millisecond)
+	told()
+	if m := AutoVision(); m != "keyed/eye" {
+		t.Fatalf("AutoVision = %q, back on the refused account, before its reset", m)
 	}
 }
