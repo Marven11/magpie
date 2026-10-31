@@ -60,12 +60,13 @@ const L = {
     more: "插件中还有更多" },
 };
 
-// The notice after a reload landed past the 5s default on webkit under
-// the whole suite's load (#3484): the page is served file by file, then
-// /api/state before /api/providers before the rows. A load itself now has
-// the 60s navigation timeout (#4470); these waits after it keep 15s,
-// while the ones inside a loaded page keep the quick 5s.
-const boot = 15000;
+// The notice after a load is the page's own boot, not an action on a
+// loaded page (#3484): goto returns at the load event, and only then are
+// /api/state and /api/providers read and the rows drawn. Under the whole
+// suite's load that boot ran past the 5s default meant for actions; it is
+// timed as the navigation it finishes (60s, #4470), while the waits inside
+// a loaded page keep the quick 5s.
+const boot = 60000;
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const lang of ["en", "zh"]) {
@@ -78,11 +79,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       page.setDefaultNavigationTimeout(60000);
       const errors = [];
       // A reload kills the page's own background reads (the web update
-      // poll, What's new), and webkit reports each killed fetch as a page
-      // error on the page it leaves (#3484): with every response faked
-      // here that wording only ever means a killed read, not the page
-      // misbehaving, so it doesn't count.
-      page.on("pageerror", (e) => { if (!e.message.includes("due to access control checks")) errors.push(e.message); });
+      // poll, What's new), and WebKit reports each killed fetch as a page
+      // error on the page it leaves (#1350, #3484): not this test's.
+      page.on("pageerror", (e) => {
+        if (engine === "webkit" && /^Fetch API cannot load .* due to access control checks/.test(e.message)) return;
+        errors.push(e.message);
+      });
       const calls = [];
       await page.route("**/*", serve(lang, calls));
       await page.goto("http://magpie.test/?view=providers");
