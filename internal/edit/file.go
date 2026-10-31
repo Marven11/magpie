@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tidwall/jsonc"
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/filememo"
 	"github.com/yetone/magpie/internal/steady"
 )
@@ -170,6 +171,13 @@ func WriteAtomic(path string, data []byte) error {
 		mode = st.Mode().Perm()
 	}
 	dir := filepath.Dir(path)
+	// a folder an agent's variable names is never made again once gone
+	// (appdir.Gone): the agent no longer reads it
+	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
+		if err := appdir.Gone(dir); err != nil {
+			return err
+		}
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}

@@ -126,9 +126,9 @@ func ompRoot(home string) string {
 // it names.
 func ompDir(home string) (dir string, shared bool) {
 	root := ompRoot(home)
-	p, set := os.LookupEnv("OMP_PROFILE")
+	p, set := appdir.LookupEnv("OMP_PROFILE")
 	if !set {
-		p = os.Getenv("PI_PROFILE")
+		p = appdir.Getenv("PI_PROFILE")
 	}
 	if p = strings.TrimSpace(p); ompProfileOK(p) {
 		return filepath.Join(root, "profiles", p, "agent"), false
