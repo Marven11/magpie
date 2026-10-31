@@ -121,6 +121,25 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(h.live, true, `${at}: reading every 5s shows its dot lit`);
         assert.deepEqual(h.wide, [], `${at}: nothing is wider than the phone`);
 
+        // the filters under it: a picker as tall as the status strip beside
+        // it, both on one middle, each taken at 44; the search and Export CSV
+        // share the last line
+        const f = await page.evaluate(() => {
+          const r = (q) => { const e = document.querySelector(q); if (!e || !e.offsetWidth) return null; const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, h: b.height, mid: b.top + b.height / 2 }; };
+          const pick = document.querySelector("#ledgerPane .sess-tools .sess-pick:not([hidden])"), pb = pick?.getBoundingClientRect();
+          // a strip wrapped under it takes the gap between them, the nearer reach
+          const under = document.querySelector("#ledStatus").getBoundingClientRect().top >= pb.bottom;
+          const hit = pb && (under ? [pb.top - 5] : [pb.top - 5, pb.bottom + 5]).every((y) => pick.contains(document.elementFromPoint(pb.left + pb.width / 2, y)));
+          return { pick: pick && r("#" + pick.id), hit, strip: r("#ledStatus"), q: r("#ledQ"), exp: r("#ledExport") };
+        });
+        assert.ok(f.pick, `${at}: a picker shows`);
+        assert.ok(f.pick.h <= 33 && Math.abs(f.pick.h - f.strip.h) <= 1, `${at}: the picker is as tall as the strip: ${f.pick.h} / ${f.strip.h}`);
+        // beside it, or, where its words are too long (de, ja), under it at its left
+        if (f.strip.top < f.pick.bottom) assert.ok(Math.abs(f.pick.mid - f.strip.mid) <= 1, `${at}: the picker and the strip share a middle: ${JSON.stringify([f.pick, f.strip])}`);
+        else assert.ok(Math.abs(f.strip.left - f.pick.left) <= 1, `${at}: a strip under the picker starts at its left`);
+        assert.ok(f.hit, `${at}: the picker is taken 5px above and below it`);
+        assert.ok(Math.abs(f.q.mid - f.exp.mid) <= 2 && f.q.right <= f.exp.left, `${at}: the search, then Export CSV, on one line: ${JSON.stringify([f.q, f.exp])}`);
+
         // the menu picks through the strip's own options
         await page.locator("#usageRangeMenu").click();
         const items = page.locator(".proto-menu .pm-item");
