@@ -3247,6 +3247,25 @@ func (s *Server) codexCompact(w http.ResponseWriter, r *http.Request, body []byt
 		local = localSummary(body, fmt.Sprintf("%s answered %d to the summary request: %s", who, rec.status, msg))
 		rec, res, err = &recorder{header: http.Header{}, status: 200}, compactResult{}, nil
 	}
+	if local == "" && (err != nil && strings.HasSuffix(err.Error(), errEndedShort.Error()) || summaryEndedShort(rec)) {
+		// nobody left, and the last one's stream broke off before its end
+		// (#2274): the words before the cut are no summary, and Codex,
+		// told a 502, asked the same huge summary over, three times, until
+		// the guard held it and the conversation could neither compact nor
+		// go on (#3526). A translated reply that stopped short comes as a
+		// 502 saying so (summaryEndedShort), the same cut. The summary is
+		// magpie's own, as when no model can be asked at all; the summary
+		// as text isn't tried, the cut was in what the model wrote, not in
+		// what it was asked
+		who, _ := compactFailure(body, rec)
+		why := provider.APIError(rec.body.Bytes(), "")
+		if err != nil {
+			why = err.Error()
+		}
+		log.Printf("codex compaction: %s: %s; compacting locally", who, why)
+		local = localSummary(body, why)
+		rec, res, err = &recorder{header: http.Header{}, status: 200}, compactResult{}, nil
+	}
 	if rec.status >= 400 {
 		// said as the compaction's failure, with who answered it: a bare
 		// "Fake: 502 Bad Gateway" read as Codex's own, and a body with
@@ -3277,19 +3296,6 @@ func (s *Server) codexCompact(w http.ResponseWriter, r *http.Request, body []byt
 		who, _ := compactFailure(body, rec)
 		log.Printf("codex compaction: %s: %v on the model the thread is leaving; compacting locally", who, err)
 		local, err = localSummary(body, who+": "+err.Error()), nil
-	}
-	if err != nil && strings.HasSuffix(err.Error(), errEndedShort.Error()) {
-		// nobody left, and the last one's stream broke off before its end
-		// (#2274): the words before the cut are no summary, and Codex,
-		// told a 502, asked the same huge summary over, three times, until
-		// the guard held it and the conversation could neither compact nor
-		// go on (#3526). The summary is magpie's own, as when no model can
-		// be asked at all; the summary as text isn't tried, the cut was in
-		// what the model wrote, not in what it was asked
-		who, _ := compactFailure(body, rec)
-		log.Printf("codex compaction: %s: %s; compacting locally", who, err)
-		local = localSummary(body, err.Error())
-		rec, res, err = &recorder{header: http.Header{}, status: 200}, compactResult{}, nil
 	}
 	if err != nil {
 		who, _ := compactFailure(body, rec)
@@ -3389,6 +3395,13 @@ func compactFailed(who string, status int, msg string) string {
 // that fails too, as for a relay's 404 (#866).
 func lacksEndpoint(status int) bool {
 	return status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented
+}
+
+// summaryEndedShort is a summary ask answered 502 because the reply
+// stopped before its end: a translated one serve held whole and found
+// cut (errEndedShort, #3526, Edward4226's third shape).
+func summaryEndedShort(rec *recorder) bool {
+	return rec.status == http.StatusBadGateway && strings.HasSuffix(provider.APIError(rec.body.Bytes(), ""), errEndedShort.Error())
 }
 
 // upstreamFailed is a relay's own word that the provider behind it turned

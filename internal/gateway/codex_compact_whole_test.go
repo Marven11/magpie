@@ -206,3 +206,45 @@ func TestCodexCompactKeepsFailingIsHeld(t *testing.T) {
 		t.Errorf("held after a summary came: %s", rec.Body)
 	}
 }
+
+// The same cut reaches codexCompact in two more shapes (Edward4226 on
+// #3526): an error event saying it, and a 502 whose message is it — a
+// translated reply serve held whole and found cut, or a relay in front
+// passing that on. Each is followed by magpie's own summary too, never
+// asked again as text; a 502 saying anything else stays Codex's failure.
+func TestCodexCompactCutShapesCompactLocally(t *testing.T) {
+	cut := "fake: " + errEndedShort.Error()
+	for _, tc := range []struct {
+		name string
+		f    *fake
+	}{
+		{"stream error", &fake{reply: sse(`data: {"type":"error","message":"` + cut + `"}`)}},
+		{"HTTP 502", &fake{code: 502, ctype: "application/json", reply: `{"error":{"message":"` + cut + `"}}`}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := tc.f
+			f.t = t
+			setup(t, provider.Responses, f)
+			code, body := codexPost(t, compact404Request)
+			if code != 200 {
+				t.Fatalf("%d %s", code, body)
+			}
+			got := compactedText(t, body)
+			for _, want := range []string{"fix the login bug", "now add a test", errEndedShort.Error()} {
+				if !strings.Contains(got, want) {
+					t.Errorf("local summary lacks %q:\n%s", want, got)
+				}
+			}
+			if strings.Contains(string(f.got), "This is the conversation so far") {
+				t.Errorf("the summary was asked again as text (%d asks)", f.calls)
+			}
+		})
+	}
+	t.Run("HTTP 502 saying more", func(t *testing.T) {
+		f := &fake{t: t, code: 502, ctype: "application/json", reply: `{"error":{"message":"` + cut + `; and the relay is down"}}`}
+		setup(t, provider.Responses, f)
+		if code, body := codexPost(t, compact404Request); code != 502 || strings.Contains(body, magpieCompaction) {
+			t.Fatalf("%d %s", code, body)
+		}
+	})
+}
