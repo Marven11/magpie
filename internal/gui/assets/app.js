@@ -18059,51 +18059,11 @@ function wbToday() {
   return new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
 }
 
-// askReset: spending a Codex account's reset can't be taken
-// back, so it asks first; then it says what came of it and reads the
-// usage again.
+// askReset: a Codex reset's confirmation, in resetask.js, loaded when asked
 let confirmAsk = null;
-function askReset(q) {
-  const ed = el("div", "editor reset-ask");
-  const head = el("div", "ehead");
-  head.append(icon(q.icon || "codex"), el("b", "", t("Use a Codex reset?")));
-  ed.append(head);
-  const who = q.alias || q.user || q.name;
-  ed.append(el("p", "lib-confirm", t(q.resets.count === 1
-    ? "{who} has 1 reset. Using it starts its windows again at once, as if none of them had been used. It can't be undone."
-    : "{who} has {n} resets. Using one starts its windows again at once, as if none of them had been used. It can't be undone.", { who, n: q.resets.count })));
-  if (q.resets.until) ed.append(el("p", "lib-confirm", t("The one used is the one that runs out first, {when}.", { when: new Date(q.resets.until).toLocaleString(intlLang()) })));
-  // nothing used yet: a reset would start nothing again
-  if (!q.windows?.some((w) => w.used > 0)) ed.append(el("p", "lib-confirm reset-idle", t("None of its windows has been used yet, so there is nothing to start again.")));
-  const bar = el("div", "bar");
-  const go = el("button", "text primary", t("Use a reset"));
-  go.onclick = async (e) => {
-    e.stopPropagation();
-    go.disabled = true;
-    go.classList.add("busy");
-    try {
-      const out = await api("usage/codex-reset", { user: q.user || "" });
-      closeConfirmAsk();
-      status(who + ": " + resetOutcome(out), out.code === "reset" ? "ok" : "err");
-      // the providers' editor reads the account's windows and resets
-      // on its own, kept a minute: read again, as Usage is (#1491)
-      delete loginUsage.codex;
-      if (editing && view === "providers") renderProviders();
-      loadQuotas();
-    } catch (err) {
-      go.disabled = false;
-      go.classList.remove("busy");
-      statusErr(err);
-    }
-  };
-  const cancel = el("button", "text", t("Cancel"));
-  cancel.onclick = cancelAsk;
-  bar.append(el("span", "grow"), cancel, go);
-  ed.append(bar);
-  confirmAsk = ed;
-  openModal(ed);
-  $("#modal").classList.add("lib");
-  go.focus();
+async function askReset(q) {
+  try { await import("./resetask.js"); } catch (err) { return statusErr(err); }
+  askResetSheet(q);
 }
 // closes a confirmation, nothing more (its Cancel, or an OK that only dismisses)
 function cancelAsk(e) { e.stopPropagation(); closeConfirmAsk(); }
@@ -18141,7 +18101,8 @@ $("#modal").addEventListener("click", (e) => {
   if (confirmAsk && modalBackdrop(e)) { e.stopImmediatePropagation(); closeConfirmAsk(); }
 }, true);
 document.addEventListener("keydown", (e) => {
-  if (!confirmationPending && confirmAsk && e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); closeConfirmAsk(); }
+  // an open menu in it (the reset to use) closes first, on its own
+  if (!confirmationPending && confirmAsk && !protoMenu && e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); closeConfirmAsk(); }
 }, true);
 function resetOutcome(out) {
   switch (out.code) {

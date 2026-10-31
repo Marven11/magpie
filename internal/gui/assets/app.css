@@ -1068,6 +1068,10 @@ body.window .field.solo { grid-column: auto; }
 .quota-own .own-badge { margin-left: 0; }
 .subscription-card.several .quota-keyline + .subscription-account { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
 .reset-ask .reset-idle { color: var(--amber); }
+/* which of an account's resets is used, the soonest unless another is picked */
+.reset-ask .reset-pick { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px; font-size: 12px; color: var(--muted); }
+.reset-ask .reset-pick .sess-pick { max-width: 100%; }
+.reset-ask .reset-sooner { color: var(--amber); }
 /* a WorkBuddy account's daily check-in on its Usage card (#694) */
 .wb-checkin { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .wb-checkin .ci-say { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
