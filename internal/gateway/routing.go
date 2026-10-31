@@ -1517,8 +1517,13 @@ func (s *Server) restAfterMarked(c candidate, status int, header http.Header, bo
 	// before, and the account was asked again as soon as it ended, refused,
 	// and rested again, round after round. Whichever rest ends later
 	// stands, as a slow start's does here, and a rest narrowed to a model
-	// keeps the longer of the two
-	if until, ok := restingUntil.m[id]; !ok || !until.After(r.Until) {
+	// keeps the longer of the two. A time magpie only guessed (askAt set:
+	// a quota or credit refusal that named none) gives way to the same
+	// refusal's time the vendor names later, though it is sooner: the
+	// vendor's word is what the guess stood in for
+	prev := restingUntil.note[id]
+	named := !prev.askAt.IsZero() && prev.Why == r.Why && (r.By == "resets" || r.By == "retry-after")
+	if until, ok := restingUntil.m[id]; !ok || !until.After(r.Until) || named {
 		restingUntil.m[id] = r.Until
 		restingUntil.note[id] = r
 	}
