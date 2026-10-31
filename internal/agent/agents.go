@@ -446,32 +446,47 @@ func ownOptionsFrom(native func(p string) []catalog.Model, authFile string, cur 
 	sort.Strings(providers)
 	var out []Option
 	for _, p := range providers {
-		name := catalog.ProviderName(p)
-		if name == "" {
-			name = nativeProviderNames[p]
+		if native == nil {
+			out = append(out, ownBuilt.shared(p, func() []Option { return ownProvider(nil, p) })...)
+		} else {
+			out = append(out, ownProvider(native, p)...)
 		}
-		if name == "" {
-			name = p
-		}
-		var ms []catalog.Model
-		if native != nil {
-			ms = native(p)
-		}
-		if len(ms) == 0 {
-			ms = catalog.Provider(p)
-		}
-		if len(ms) == 0 {
-			ms = codexServed(p)
-		}
-		opts := group(name, options(ms, p+"/"))
-		if ic := providerIcon(p); ic != "" {
-			for i := range opts {
-				opts[i].GroupIcon = ic
-			}
-		}
-		out = append(out, opts...)
 	}
 	return out
+}
+
+// ownBuilt is ownProvider's options built last per provider, for agents
+// without a registry of their own: Goose's model field asked them each
+// poll, for the picker and again for Drift, each provider's models made
+// into options anew, 20 MB of forty polls with real accounts.
+var ownBuilt stampedLists[Option]
+
+// ownProvider is the options of one provider an agent reaches on its own.
+func ownProvider(native func(p string) []catalog.Model, p string) []Option {
+	name := catalog.ProviderName(p)
+	if name == "" {
+		name = nativeProviderNames[p]
+	}
+	if name == "" {
+		name = p
+	}
+	var ms []catalog.Model
+	if native != nil {
+		ms = native(p)
+	}
+	if len(ms) == 0 {
+		ms = catalog.Provider(p)
+	}
+	if len(ms) == 0 {
+		ms = codexServed(p)
+	}
+	opts := group(name, options(ms, p+"/"))
+	if ic := providerIcon(p); ic != "" {
+		for i := range opts {
+			opts[i].GroupIcon = ic
+		}
+	}
+	return opts
 }
 
 // ---- agents ----------------------------------------------------------------
