@@ -187,7 +187,7 @@ var rules = append([]rule{
 	// an Authorization or Cookie header's value is a secret whatever it
 	// looks like: an opaque bearer token, a session value (#2946)
 	{kind: "SECRET", re: regexp.MustCompile(`(?im)^[ \t]*(?:authorization|cookie)[ \t]*:[ \t]*(\S[^\r\n]{7,})`),
-		markers: fieldNames{{"authorization", "authorization"}, {"cookie", "cookie"}}.markers()},
+		markers: fieldNames{{"authorization", "authorization"}, {"cookie", "cookie"}}.markers(), ok: headerValue},
 	// a field called key and nothing more, as providers.json has one: "key":
 	// "oc_sk_…" (#195). Only a long value of letters and digits both, since
 	// code calls anything a key: a map's "key": "value", sort_key, keyboard.
@@ -502,6 +502,35 @@ func notASlug(v string) bool {
 		}
 	}
 	return false
+}
+
+// headerValue says the rest of an Authorization or Cookie line is a
+// header's value, not prose that begins with the word ("Authorization:
+// the user must sign in first"): a credential, after a scheme word or
+// alone (Bearer …, Basic …), or a cookie's name=value pairs. One that
+// stands for a variable (${TOKEN}, <token>, ****) is left alone.
+func headerValue(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" || !notAVariable(v) {
+		return false
+	}
+	notLetter := func(r rune) bool { return !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') }
+	f := strings.Fields(v)
+	if len(f) == 1 || len(f) == 2 && strings.IndexFunc(f[0], notLetter) < 0 {
+		// a word alone is prose's: a credential has a digit or a sign in it
+		cred := f[len(f)-1]
+		return len(cred) >= 8 && notAVariable(cred) && strings.IndexFunc(cred, notLetter) >= 0
+	}
+	for _, kv := range strings.Split(v, ";") {
+		if kv = strings.TrimSpace(kv); kv == "" {
+			continue
+		}
+		name, _, ok := strings.Cut(kv, "=")
+		if !ok || name == "" || strings.ContainsAny(name, " \t") {
+			return false
+		}
+	}
+	return strings.Contains(v, "=")
 }
 
 // notAPlainKey turns away the upper-case name before the value at s[:a]

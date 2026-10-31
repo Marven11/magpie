@@ -178,6 +178,11 @@ func TestMaskAuthHeaders(t *testing.T) {
 		{"Authorization: Bearer " + jwt, 1},
 		{"the authorization is required", 0},
 		{"cookies: 3", 0},
+		{"Authorization: the user must sign in first", 0},
+		{"Authorization: required", 0},
+		{"Cookie: see the docs for how they are kept", 0},
+		{"Authorization: Bearer ${API_TOKEN}", 0},
+		{"Cookie: sid=Rk82mQ4xVb; theme=dark", 1},
 	} {
 		out, n := Mask(c.in, Options{Secrets: true})
 		if n != c.n {
