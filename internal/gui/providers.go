@@ -369,6 +369,14 @@ type accountJSON struct {
 	WSL string `json:"wsl,omitempty"`
 }
 
+// agentNamed is agent.Find among the agents built once for the request
+// (provider.Held). Each account's row named its agent, and Find built all
+// of them again for it: with the owner's config 58 MB of the 1.4 GB a
+// magpie allocated over 20 window polls.
+func agentNamed(q string) (*agent.Agent, error) {
+	return agent.FindIn(provider.Held("agent.All", agent.All), q)
+}
+
 // accountLabel is the name and logo an account is shown with: its agent's,
 // the subscription's for one no agent magpie configures, and a plugin's
 // provider's for a plugin's sign-in, whose agent is "plugin" (#694 listed a
@@ -388,7 +396,7 @@ func accountLabel(p provider.Provider) (name, icon string) {
 	} else if a.Agent == provider.ChatGPTAPIID {
 		// a ChatGPT plan through OpenAI's API, not Codex's backend
 		name, icon = "ChatGPT API", "openai"
-	} else if ag, err := agent.Find(a.Agent); err == nil {
+	} else if ag, err := agentNamed(a.Agent); err == nil {
 		name, icon = ag.Name, ag.Icon
 	} else if a.Agent == "cursor" {
 		// a Cursor subscription is served by the gateway, not an agent magpie configures
@@ -992,7 +1000,7 @@ func providersState() providersJSON {
 			// a removed account as its row was named: a plugin's by the
 			// provider it signs in to, not its agent "plugin" (#694)
 			e.Name, e.Icon = accountLabel(p)
-		} else if a, err := agent.Find(x.Agent); err == nil {
+		} else if a, err := agentNamed(x.Agent); err == nil {
 			e.Name, e.Icon = a.Name, a.Icon
 		}
 		s.Excluded = append(s.Excluded, e)
