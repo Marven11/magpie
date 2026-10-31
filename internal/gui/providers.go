@@ -1190,7 +1190,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			return
 		}
 		s := providersState()
-		writeJSON(rw, s)
+		writeProvidersJSON(rw, s)
 		keepProviders(s)
 	})
 	// Recent-call bodies are read only when their row is opened, not with
@@ -1232,7 +1232,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			fail(rw, err)
 			return
 		}
-		writeJSON(rw, providersState())
+		writeProvidersJSON(rw, providersState())
 	})
 	// a picture for a provider, picked in the editor: kept by content before
 	// the provider is saved, which then points at it. The page sends it as
@@ -2371,7 +2371,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			http.NotFound(rw, r)
 			return
 		}
-		writeJSON(rw, providersState())
+		writeProvidersJSON(rw, providersState())
 	})
 	// The Codex desktop app left on the model list before a change (the
 	// Agents row's Restart): quit it and open it again.
@@ -2593,7 +2593,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			fail(rw, err)
 			return
 		}
-		writeJSON(rw, providersState())
+		writeProvidersJSON(rw, providersState())
 	})
 	mux.HandleFunc("POST /api/stepfun/{id}/signout", func(rw http.ResponseWriter, r *http.Request) {
 		id, _, ok := stepfunOf(rw, r)
@@ -2604,7 +2604,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			fail(rw, err)
 			return
 		}
-		writeJSON(rw, providersState())
+		writeProvidersJSON(rw, providersState())
 	})
 	// the page copies through here first: in the app's window the
 	// clipboard API is refused or missing, depending on the system
