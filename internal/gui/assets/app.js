@@ -11948,7 +11948,9 @@ function renderRouting(p) {
       ? t("Routing picks the account for each request through magpie; {agent} on its own stays signed in to the first account, whatever it has left.", { agent: a.agentName })
       : routing === "order"
         ? t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is used up, and back to the first once that has room again.", { agent: a.agentName })
-        : t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is 98% used, and back to the first once that has room again.", { agent: a.agentName }));
+        : a.agent === "codex" && !p.switchOnly || p.keepLogin
+        ? t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is 98% used, and back to the first once that has room again.", { agent: a.agentName })
+        : t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is 98% used, and keeps it there till that one is 98% used too.", { agent: a.agentName }));
   // what the Save will make of it differs from what it is: said beside it
   const unsaved = () => {
     const u = el("span", "hint munsaved", t("unsaved"));
@@ -13280,8 +13282,8 @@ function renderAccounts(a, p) {
   const cx = a.agent === "codex", ag = { agent: a.agentName };
   if (p && (cx && several || a.agent === "claude")) {
     const [only, cb] = tick(t("Only switch {agent}'s sign-in", ag), p.switchOnly);
-    const [tip, on, off] = cx ? [t("magpie signs {agent} in to the next account with room when the one it is on is used up, and back once that has room again, by writing {agent}'s own sign-in; {agent}'s requests go straight to OpenAI, never through magpie. A {agent} app or session already open stays on its account until it is opened again. Connected to magpie, {agent}'s requests go through it as before.", ag), t("magpie only switches {agent}'s sign-in; its requests go straight to OpenAI", ag), t("{agent}'s requests go through magpie to fail over to your other accounts again", ag)]
-      : [t("magpie moves {agent}'s own sign-in to the next account with room when one is used up, and back once it has room. Nothing on these accounts is served through magpie.", ag), t("magpie serves no requests on these accounts"), t("magpie serves requests on these accounts again")];
+    const [tip, on, off] = cx ? [t("magpie signs {agent} in to the next account with room when the one it is on is used up, and keeps it there till that one is used up too, by writing {agent}'s own sign-in; {agent}'s requests go straight to OpenAI, never through magpie. A {agent} app or session already open stays on its account until it is opened again. Connected to magpie, {agent}'s requests go through it as before.", ag), t("magpie only switches {agent}'s sign-in; its requests go straight to OpenAI", ag), t("{agent}'s requests go through magpie to fail over to your other accounts again", ag)]
+      : [t("magpie moves {agent}'s own sign-in to the next account with room when one is used up, and keeps it there till that one is used up too. Nothing on these accounts is served through magpie.", ag), t("magpie serves no requests on these accounts"), t("magpie serves requests on these accounts again")];
     only.title = tip;
     cb.onchange = () => accountAction("provider/switchonly", { id: p.id, switchOnly: cb.checked }, cb.checked ? on : off);
     list.append(el("div", "switch-only", only));

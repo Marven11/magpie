@@ -1019,7 +1019,9 @@ func Logins(agent string) []Login {
 	}
 	back := map[string]string{}
 	for a, user := range active {
-		if r, ok := loginReturnOf(a, user); ok {
+		// only where magpie goes back to it (returnsToFirst): a return
+		// kept from before stays on record, for In order or KeepLogin
+		if r, ok := loginReturnOf(a, user); ok && returnsToFirst(a) {
 			back[a] = r.Back
 		}
 	}
