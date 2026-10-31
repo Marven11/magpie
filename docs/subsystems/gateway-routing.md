@@ -683,6 +683,52 @@ gone. A turned-off key on loopback is unchanged: it reads as no key.
 `TestIssuedKeyBoundedByIssuer` in
 [`issue_test.go`](../../internal/access/issue_test.go).
 
+### Trading an OIDC token for a key
+
+A CI job need keep no gateway key in its secrets (#4531, xazaj on X): it
+trades its OIDC token for a short-lived key. The user writes a rule
+([`internal/oidc`](../../internal/oidc/rules.go), kept in
+`oidc-rules.json`) with `magpie gateway-key oidc add --key <id> --repo
+owner/name [--ref refs/heads/main] [--environment e] [--claim k=v] [--ttl
+1h] [--issuer URL] [--audience a]`; `oidc list` and `oidc remove <id>`
+manage them. No rule, no exchange. A rule names:
+
+- the issuer, GitHub Actions' (`token.actions.githubusercontent.com`)
+  by default, https only;
+- the audience, `magpie-<rule id>` by default, so a token asked for one
+  rule opens no other;
+- the claims the token must have, each exact or a `path.Match` glob. A
+  GitHub rule names `repository`, `repository_owner` or their ids with no
+  wildcard, or any repository's workflow could get a token GitHub signs;
+- the gateway key the keys are issued under, which must be let issue
+  (`Key.Issues`) and not be issued itself, and how long they live (1h by
+  default, `MinTTL` to `MaxTTL`).
+
+`POST /v1/magpie/keys/oidc` with `Authorization: Bearer <token>` and an
+optional `{"ttl", "models"}` ([`oidc_keys.go`](../../internal/gateway/oidc_keys.go))
+verifies the token (`oidc.Match`, [`verify.go`](../../internal/oidc/verify.go)):
+RS256 alone, signed by a key from the issuer's discovery document's https
+`jwks_uri`, `exp` required, `nbf`/`iat` with a minute's leeway, the rule's
+audience and claims, and a `jti` traded once until it expires. A token is
+judged only against rules naming its `iss`, so it can't make magpie fetch
+from a URL of its choosing. Keys are cached an hour per issuer, read by
+one request at a time, asked again for an unknown `kid` at most every 10s,
+and the last good keys keep serving while the issuer is down; with none
+ever read nothing is let in. A matching token gets `access.IssueKey` under
+the rule's key, named `repo@ref (run N)`, living no longer than the rule,
+so everything above about issued keys holds: bounded by its issuer, its
+spend counts against it, turning the issuer off stops both.
+
+The route is the one exemption from `remoteKeyed` in `lanGuard`
+(`oidcExchange`: that exact path, POST, no gateway key). It is answered
+only while magpie is shared and past the allow list, and a refused token
+counts against `tooManyAuthFails` as a wrong key does. A read-only key is
+refused it. Covered by `TestOIDCTokenTradedForKey`
+([`oidc_keys_test.go`](../../internal/gateway/oidc_keys_test.go)),
+`TestMatchEachCheck`, `TestKeysCachedAndKept`, `TestUnreadKeysLetNothingIn`
+and `TestAddRefuses` ([`oidc_test.go`](../../internal/oidc/oidc_test.go)).
+Not tried: a real GitHub Actions run against a shared magpie.
+
 ### The stats and management API
 
 Every route under `/v1/magpie/` answers a program on this computer, and
@@ -699,6 +745,7 @@ told its own calls and limit alone:
 | `GET /v1/magpie/limit` | the key's own limits, its `expires`, and `issuerLimits` |
 | `GET /v1/magpie/concurrency` | requests in flight per account |
 | `POST`/`GET /v1/magpie/keys`, `DELETE /v1/magpie/keys/{id}` | short-lived keys, above |
+| `POST /v1/magpie/keys/oidc` | an OIDC token traded for a short-lived key, above |
 
 ## Turning provider search off
 
