@@ -248,6 +248,12 @@ type providerJSON struct {
 	// when the user set none (provider.Concurrency)
 	MaxConcurrency    *int `json:"maxConcurrency"`
 	PluginConcurrency int  `json:"pluginConcurrency,omitempty"`
+	// how many of its keys or accounts take requests at once, the rest
+	// held back as reserves: the user's (null: not set), and what its
+	// plugin says when the user set none (provider.AtOnce; 01huadalang
+	// on Discord, ZCode)
+	MaxAccounts    *int `json:"maxAccounts"`
+	PluginAccounts int  `json:"pluginAccounts,omitempty"`
 	// each key's or account's own limit over it (#892), by its name in
 	// lower case or its key id; 0 there is none
 	AccountConcurrency map[string]int `json:"accountConcurrency,omitempty"`
@@ -669,7 +675,7 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, AccountCaps: p.AccountCaps, AccountWindowCaps: p.AccountWindowCaps, AccountNames: p.AccountNames, Headers: p.Headers, ExtraBody: p.ExtraBody, ReplyHeaders: p.ReplyHeaders, Searches: p.Searches, Cline: p.ClinePinnable(), PinUpstream: p.PinUpstream, Unredacted: p.Unredacted, CountFree: p.CountFree, InsecureTLS: p.InsecureTLS, TakesInsecureTLS: p.TakesInsecureTLS(), LimitRestOff: p.LimitRestOff, NativeCompaction: p.NativeCompaction, CarriesCompaction: p.CarriesCompaction(), PassUserAgent: p.PassUserAgent, OwnClient: p.OwnClient(), AuthHeader: p.AuthHeader, BothAuth: p.BothAuth(), BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, BalanceMethod: p.BalanceMethod, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.PicksOf(avail), Agents: make([]providerAgent, 0, len(agents)),
 		Fallback: p.Fallback, Routing: p.Routing, Sink: p.Sink, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, SwitchOnly: p.SwitchOnly, CapStop: p.CapStop, CapCareful: p.CapCareful, Unlisted: p.Unlisted, NoModels: p.ServesNone(), BestInFamily: p.BestInFamily && len(p.Models) == 0 && !p.NoModels, Off: p.Off, Contexts: p.Contexts,
-		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(), PriceRate: p.PriceRate,
+		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(), MaxAccounts: p.MaxAccounts, PluginAccounts: p.PluginAtOnce(), PriceRate: p.PriceRate,
 		RateWindows: p.RateWindows, RateNow: rateNowOf(p, time.Now()),
 		AccountConcurrency: p.AccountConcurrency, AccountWeights: p.AccountWeights, QueueLimit: p.QueueLimit, QueueWait: p.QueueWait, MaxRPM: p.MaxRPM,
 		Outputs: provider.OutputsOf(p.ID), Compacts: provider.CompactsOf(p.ID),
@@ -1324,6 +1330,10 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// accounts has out at once: a number (0 none), null for what
 			// its plugin says or none; a save that leaves it out keeps it
 			MaxConcurrency json.RawMessage `json:"maxConcurrency"`
+			// MaxAccounts is how many of its keys or accounts take
+			// requests at once: a number (0 none), null for what its
+			// plugin says or none; a save that leaves it out keeps it
+			MaxAccounts json.RawMessage `json:"maxAccounts"`
 			// QueueLimit and QueueWait are how many may wait for each key
 			// or account and for how many seconds (#892): numbers, 0 or
 			// null for no bound; a save that leaves them out keeps them
@@ -1605,6 +1615,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				return
 			}
 			in.MaxConcurrency = cc
+			ma, keepMA, err := limitOf(req.MaxAccounts, "accounts at once")
+			if err != nil {
+				fail(rw, err)
+				return
+			}
+			in.MaxAccounts = ma
 			ql, keepQL, err := queueOf(req.QueueLimit, "queue length")
 			if err != nil {
 				fail(rw, err)
@@ -1717,6 +1733,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				}
 				if keepCC && old != nil {
 					in.MaxConcurrency = old.MaxConcurrency
+				}
+				if keepMA && old != nil {
+					in.MaxAccounts = old.MaxAccounts
 				}
 				if keepQL && old != nil {
 					in.QueueLimit = old.QueueLimit
@@ -2788,14 +2807,20 @@ func rateNowOf(p provider.Provider, t time.Time) float64 {
 // concurrencyOf is a save's maxConcurrency: keep when the save left it
 // out, nil for null (the plugin's, or none), else the number, 0 for none.
 func concurrencyOf(raw json.RawMessage) (n *int, keep bool, err error) {
+	return limitOf(raw, "max concurrent requests")
+}
+
+// limitOf is a save's limit named what, read as concurrencyOf reads
+// maxConcurrency: keep when left out, nil for null, else 0 to 1000.
+func limitOf(raw json.RawMessage, what string) (n *int, keep bool, err error) {
 	if len(raw) == 0 {
 		return nil, true, nil
 	}
 	if err := json.Unmarshal(raw, &n); err != nil {
-		return nil, false, fmt.Errorf("max concurrent requests must be a whole number, not %s", raw)
+		return nil, false, fmt.Errorf("%s must be a whole number, not %s", what, raw)
 	}
 	if n != nil && (*n < 0 || *n > 1000) {
-		return nil, false, fmt.Errorf("max concurrent requests must be from 0 to 1000, not %d", *n)
+		return nil, false, fmt.Errorf("%s must be from 0 to 1000, not %d", what, *n)
 	}
 	return n, false, nil
 }

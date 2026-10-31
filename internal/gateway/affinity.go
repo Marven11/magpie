@@ -579,6 +579,13 @@ func affine(scope, mode string, rotate, spread, inOrder bool, in http.Header, fr
 			m := pl.order[0]
 			a.Main = &m
 		}
+	case at < len(pl.order) && pl.order[at].Reserve > 0:
+		// held back, its provider's accounts at once taken by those
+		// before it (keepAtOnce): asked when they all failed, it keeps no
+		// conversation, which goes back to them whatever it cached
+		// (01huadalang on Discord: a third ZCode account in use at once
+		// had the address banned). Strict, the user's own, keeps it
+		a.Why = "reserve"
 	case pl.order[at].Rest != nil:
 		a.Why = "resting"
 	case !a.Within && backToMain(pl.order, at):

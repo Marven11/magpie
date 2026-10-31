@@ -7596,9 +7596,8 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 
-// priceTypedError: a model with no list price given only part of its
-// price in Names & levels (its input and output both needed) holds the
-// Save, its empty box focused, rather than the part typed being dropped.
+// priceTypedError: a model with no list price given half a price in Names &
+// levels holds the Save, its empty box focused, rather than drop the half.
 function priceTypedError(ed) {
   const id = Object.keys(draft?.priceTyped || {}).find((x) => !draft.chosen?.length || draft.chosen.includes(x));
   if (id === undefined) return false;
@@ -7636,9 +7635,7 @@ function proxyPicker() {
     hint.textContent = t(PROXY_HINT[v]);
   });
   seg.classList.add("proxy-mode");
-  // the address sits beside the options, its room kept while it is not
-  // asked for, so picking one never changes the dialog's height (a
-  // centred dialog would move under the pointer)
+  // its room kept while not asked for: a pick never moves the dialog
   const row = el("div", "proxy-row");
   row.append(seg, addr);
   box.append(row, login, hint);
@@ -7651,23 +7648,18 @@ function concurrencyField(p) {
   const plugin = p?.pluginConcurrency || 0;
   const box = input(draft.concurrency ?? "", plugin ? t("{n}, as its plugin says", { n: plugin }) : t("No limit"), "number");
   box.classList.add("concurrency");
-  box.min = "0";
-  box.max = "1000";
-  box.step = "1";
-  box.inputMode = "numeric";
-  box.oninput = () => { draft.concurrency = box.value; };
-  // the queue each key or account has past it (#892): how many may wait,
-  // and how long; past either, a request is turned away with a 429
+  // the queue past it (#892): past either, a request is turned away (429)
   const queue = input(draft.queueLimit ?? "", t("No bound"), "number");
   queue.classList.add("queue-limit");
   const wait = input(draft.queueWait ?? "", t("As long as it takes"), "number");
   wait.classList.add("queue-wait");
-  // how many requests each key or account sends the vendor in any minute
-  // (coeo91 on Discord: OpenRouter's free models take 20); one more waits
-  // for room in the minute
+  // requests a minute (coeo91: OpenRouter's free models take 20)
   const rpm = input(draft.maxRPM ?? "", t("No limit"), "number");
   rpm.classList.add("rpm");
-  for (const [b, max, k] of [[queue, 10000, "queueLimit"], [wait, 3600, "queueWait"], [rpm, 10000, "maxRPM"]]) {
+  // the rest wait in reserve (01huadalang: ZCode bans 3 per IP)
+  const accounts = input(draft.maxAccounts ?? "", p?.pluginAccounts ? t("{n}, as its plugin says", { n: p.pluginAccounts }) : t("No limit"), "number");
+  accounts.classList.add("max-accounts");
+  for (const [b, max, k] of [[box, 1000, "concurrency"], [queue, 10000, "queueLimit"], [wait, 3600, "queueWait"], [rpm, 10000, "maxRPM"], [accounts, 1000, "maxAccounts"]]) {
     b.min = "0";
     b.max = String(max);
     b.step = "1";
@@ -7676,6 +7668,7 @@ function concurrencyField(p) {
   }
   return [
     ...field(t("Concurrency"), box, (plugin ? t("Over it, requests queue and go out in order; empty takes the plugin's {n}, 0 is no limit", { n: plugin }) : t("Over it, requests queue and go out in order; 0 or empty is no limit"))),
+    ...field(t("Accounts at once"), accounts, t("How many of its accounts or keys take requests at once, the first in the list; the next takes over when one runs out or fails. 0 is no limit")),
     ...field(t("Requests per minute"), rpm, t("How many requests each key or account sends in any minute, retries included; one more waits for room, up to 2 minutes. 0 or empty is no limit")),
     ...field(t("Queue size"), queue, t("How many requests may wait for each key or account; one more is turned away at once. 0 or empty is no bound")),
     ...field(t("Queue wait"), wait, t("Seconds a request waits for a free slot before it is turned away. 0 or empty waits as long as it takes")),
@@ -7736,8 +7729,7 @@ function pluginOptionsField(sub) {
   }
   return field(t("Plugin options"), box, t("{plugin} declares these and reads them as it works; nothing runs on its own when one changes.", { plugin: sub.plugin.name || sub.plugin.pid }));
 }
-// savePluginOptions saves the plugin options changed in the draft, by the
-// plugin's own provider id.
+// savePluginOptions saves the draft's changed plugin options, by its own id.
 async function savePluginOptions(sub) {
   const pid = sub?.plugin?.pid;
   if (!pid) return;
@@ -7745,8 +7737,7 @@ async function savePluginOptions(sub) {
     prefs = await writingPrefs(api("settings/plugin-option", { provider: pid, key, on }));
   }
 }
-// priceRateOfDraft is the draft's rate as it is saved — null for none,
-// else the number — or undefined when what is typed isn't one.
+// priceRateOfDraft: as saved, null for none, undefined if typed wrong
 function priceRateOfDraft() {
   const v = String(draft.priceRate ?? "").trim();
   if (!v) return null;
@@ -7760,13 +7751,9 @@ function shown(x) {
   for (let d = x?.closest("details"); d; d = d.parentElement?.closest("details")) d.open = true;
   return x;
 }
-// An editor's fold (Advanced, Server address, More endpoints) opens and
-// closes as a disclosure does on iOS: its content grows out of the line
-// on a spring, its rows coming in one after another, and the dialog round
-// it grows or shrinks on the same curve — so the change shows even where
-// the fold is taller than the dialog and goes on out of sight below. Its
-// arrow turns. At once with Reduce motion, and for a fold a Save opens
-// (shown). A click while it moves turns it back from where it is.
+// An editor's fold opens as an iOS disclosure: it and the dialog grow on one
+// spring, rows in one by one; at once with Reduce motion or for a Save
+// (shown). A click while it moves turns it back.
 const foldMoves = new WeakMap();
 document.addEventListener("click", (e) => {
   const sum = e.target.closest?.(".editor details.more > summary");
@@ -7829,7 +7816,7 @@ document.addEventListener("click", (e) => {
 function advancedSet(d, p) {
   return (d.headers || []).some(([k]) => (k || "").trim()) || !!(d.extraBody || "").trim() || !!(d.replyHeaders || "").trim() ||
     !!d.proxyMode || Object.values(d.accountProxies || {}).some((x) => x?.mode) ||
-    [d.concurrency, d.queueLimit, d.queueWait, d.maxRPM, d.priceRate, d.contexts, d.outputs, d.compacts].some((v) => String(v ?? "").trim()) ||
+    [d.concurrency, d.maxAccounts, d.queueLimit, d.queueWait, d.maxRPM, d.priceRate, d.contexts, d.outputs, d.compacts].some((v) => String(v ?? "").trim()) ||
     !!d.rateWindows?.length ||
     !!(d.searches || d.authHeader || d.passUserAgent || d.unredacted || d.countFree || d.pinUpstream || d.nativeCompaction || d.balanceToken || d.limitRestOff) ||
     !!d.fallback?.length || !!p?.balanceToken?.set;
@@ -7841,11 +7828,9 @@ function priceRateError(ed) {
 function concurrencyDraft(p) {
   return { concurrency: p?.maxConcurrency == null ? "" : String(p.maxConcurrency), priceRate: p?.priceRate ? String(p.priceRate) : "",
     queueLimit: p?.queueLimit ? String(p.queueLimit) : "", queueWait: p?.queueWait ? String(p.queueWait) : "",
-    maxRPM: p?.maxRPM ? String(p.maxRPM) : "" };
+    maxRPM: p?.maxRPM ? String(p.maxRPM) : "", maxAccounts: p?.maxAccounts == null ? "" : String(p.maxAccounts) };
 }
-// queueOfDraft is the draft's queue and limit a minute as they are saved,
-// { queueLimit, queueWait, maxRPM } with 0 for none, or { bad } naming the
-// field typed wrong.
+// queueOfDraft: { queueLimit, queueWait, maxRPM } as saved, 0 for none, or { bad }
 function queueOfDraft() {
   const out = {};
   for (const [k, max] of [["queueLimit", 10000], ["queueWait", 3600], ["maxRPM", 10000]]) {
@@ -7864,18 +7849,18 @@ function queueError(ed, bad) {
   shown(ed.querySelector(bad === "queueLimit" ? "input.queue-limit" : "input.queue-wait"))?.focus(NO_SCROLL);
   return editorError(bad === "queueLimit" ? t("Queue size: a whole number from 0 to 10000") : t("Queue wait: a whole number of seconds from 0 to 3600"), "warn");
 }
-// concurrencyOfDraft is the draft's limit as it is saved — null for none
-// set, else the number — or undefined when what is typed isn't one.
-function concurrencyOfDraft() {
-  const v = String(draft.concurrency ?? "").trim();
+// concurrencyOfDraft: draft[k] as saved, null for none, undefined if typed wrong
+function concurrencyOfDraft(k = "concurrency") {
+  const v = String(draft[k] ?? "").trim();
   if (!v) return null;
   if (!/^\d+$/.test(v) || +v > 1000) return undefined;
   return +v;
 }
-function concurrencyError(ed) {
-  shown(ed.querySelector("input.concurrency"))?.focus(NO_SCROLL);
-  return editorError(t("Concurrency: a whole number from 0 to 1000"), "warn");
+function concurrencyError(ed, c = "concurrency", m = t("Concurrency: a whole number from 0 to 1000")) {
+  shown(ed.querySelector("input." + c))?.focus(NO_SCROLL);
+  return editorError(m, "warn");
 }
+const accountsError = (ed) => concurrencyError(ed, "max-accounts", t("Accounts at once: a whole number from 0 to 1000"));
 function proxyDraft(p) {
   const v = (p?.proxy || "").trim();
   // each account's own (accountProxies), by its name in lower case
@@ -9384,6 +9369,8 @@ function drawEditor(p, presetID) {
       }
       const maxConcurrency = concurrencyOfDraft();
       if (maxConcurrency === undefined) return concurrencyError(ed);
+      const maxAccounts = concurrencyOfDraft("maxAccounts");
+      if (maxAccounts === undefined) return accountsError(ed);
       const queue = queueOfDraft();
       if (queue.bad) return queueError(ed, queue.bad);
       const priceRate = priceRateOfDraft();
@@ -9393,7 +9380,7 @@ function drawEditor(p, presetID) {
       if (priceTypedError(ed)) return;
       const picked = accountModelsDraft(p);
       if (picked === false) return pickError();
-      const body = { id: p.id, models: chosenIds(), noModels: noneChosen(), bestInFamily: bestChosen(), unlisted: draft.unlisted, hiddenDrawers: draft.hiddenDrawers, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, compacts: cpx.map, proxy, accountProxies: own.map, maxConcurrency, ...queue, priceRate, rateWindows, modelPrefs: modelPrefsOfDraft(), pinUpstream: !!draft.pinUpstream, unredacted: !!draft.unredacted, countFree: !!draft.countFree, ...(p.carriesCompaction ? { nativeCompaction: !!draft.nativeCompaction } : {}), ...routingOfDraft(p) };
+      const body = { id: p.id, models: chosenIds(), noModels: noneChosen(), bestInFamily: bestChosen(), unlisted: draft.unlisted, hiddenDrawers: draft.hiddenDrawers, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, compacts: cpx.map, proxy, accountProxies: own.map, maxConcurrency, maxAccounts, ...queue, priceRate, rateWindows, modelPrefs: modelPrefsOfDraft(), pinUpstream: !!draft.pinUpstream, unredacted: !!draft.unredacted, countFree: !!draft.countFree, ...(p.carriesCompaction ? { nativeCompaction: !!draft.nativeCompaction } : {}), ...routingOfDraft(p) };
       saving(saveBtn, t("Saving…"));
       saveAccountModelsDraft(picked).then(() => savePluginOptions(subOf(a.agent))).then(() => providerAction("save", body, t("{name} saved", { name: p.name })), (e) => { doneSaving(saveBtn); editorError(e.message || String(e)); }); };
     bar.append(cancel, saveBtn);
@@ -10023,6 +10010,8 @@ function drawEditor(p, presetID) {
     }
     body.maxConcurrency = concurrencyOfDraft();
     if (body.maxConcurrency === undefined) return concurrencyError(ed);
+    body.maxAccounts = concurrencyOfDraft("maxAccounts");
+    if (body.maxAccounts === undefined) return accountsError(ed);
     const queue = queueOfDraft();
     if (queue.bad) return queueError(ed, queue.bad);
     Object.assign(body, queue);

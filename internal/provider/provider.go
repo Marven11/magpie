@@ -163,6 +163,14 @@ type Provider struct {
 	// in the order they came (see Concurrency). nil follows what a
 	// plugin's provider says it takes, else none; 0 is no limit.
 	MaxConcurrency *int `json:"maxConcurrency,omitempty"`
+	// MaxAccounts is how many of its accounts or keys take requests at
+	// the same time (01huadalang on Discord: ZCode's firewall blocks the
+	// address that three of its accounts ask from at once, and two are
+	// fine). Routing goes over the first that many it would ask, in its
+	// order and not resting; the others wait as reserves until one of
+	// those rests (out of quota, rate limited, failing). nil follows what
+	// a plugin's provider says, else none; 0 is no limit (see AtOnce).
+	MaxAccounts *int `json:"maxAccounts,omitempty"`
 	// AccountConcurrency is, for one account or key, its own limit over
 	// MaxConcurrency (#892): an account by its name in lower case, a key
 	// by its KeyID; 0 there is no limit for it. One not in it takes the
@@ -767,6 +775,10 @@ func (p Provider) clone() Provider {
 		v := *p.MaxConcurrency
 		p.MaxConcurrency = &v
 	}
+	if p.MaxAccounts != nil {
+		v := *p.MaxAccounts
+		p.MaxAccounts = &v
+	}
 	if p.ZhipuTeam != nil {
 		v := *p.ZhipuTeam
 		p.ZhipuTeam = &v
@@ -837,6 +849,7 @@ func withPicks(a, pk Provider) Provider {
 	a.CapStop, a.CapCareful = pk.CapStop, pk.CapCareful
 	a.AccountNames = pk.AccountNames
 	a.MaxConcurrency, a.PinUpstream = pk.MaxConcurrency, pk.PinUpstream
+	a.MaxAccounts = pk.MaxAccounts
 	a.AccountConcurrency, a.QueueLimit, a.QueueWait = pk.AccountConcurrency, pk.QueueLimit, pk.QueueWait
 	a.AccountWeights = pk.AccountWeights
 	a.MaxRPM = pk.MaxRPM
@@ -985,7 +998,7 @@ func Save(p Provider) error {
 		if p.ID == "kiro" {
 			key = p.Key
 		}
-		p = Provider{ID: p.ID, Key: key, Models: p.Models, NoModels: p.NoModels, BestInFamily: p.BestInFamily, RateWindows: p.RateWindows, PickedFrom: p.PickedFrom, Delisted: p.Delisted, Unlisted: p.Unlisted, HiddenDrawers: p.HiddenDrawers, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Sink: p.Sink, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, SwitchOnly: p.SwitchOnly, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, AccountCaps: p.AccountCaps, AccountWindowCaps: p.AccountWindowCaps, CapStop: p.CapStop, CapCareful: p.CapCareful, AccountNames: p.AccountNames, MaxConcurrency: p.MaxConcurrency, AccountConcurrency: p.AccountConcurrency, AccountWeights: p.AccountWeights, QueueLimit: p.QueueLimit, QueueWait: p.QueueWait, MaxRPM: p.MaxRPM, PriceRate: p.PriceRate, CountFree: p.CountFree, QuotaRest: p.QuotaRest, QuotaResetAt: p.QuotaResetAt, RestCap: p.RestCap, PinUpstream: p.PinUpstream, NativeCompaction: p.NativeCompaction, PromptAsWritten: p.PromptAsWritten, Unredacted: p.Unredacted, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID), Tucked: tuckedAccount(p.ID)}
+		p = Provider{ID: p.ID, Key: key, Models: p.Models, NoModels: p.NoModels, BestInFamily: p.BestInFamily, RateWindows: p.RateWindows, PickedFrom: p.PickedFrom, Delisted: p.Delisted, Unlisted: p.Unlisted, HiddenDrawers: p.HiddenDrawers, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Sink: p.Sink, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, SwitchOnly: p.SwitchOnly, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, AccountCaps: p.AccountCaps, AccountWindowCaps: p.AccountWindowCaps, CapStop: p.CapStop, CapCareful: p.CapCareful, AccountNames: p.AccountNames, MaxConcurrency: p.MaxConcurrency, MaxAccounts: p.MaxAccounts, AccountConcurrency: p.AccountConcurrency, AccountWeights: p.AccountWeights, QueueLimit: p.QueueLimit, QueueWait: p.QueueWait, MaxRPM: p.MaxRPM, PriceRate: p.PriceRate, CountFree: p.CountFree, QuotaRest: p.QuotaRest, QuotaResetAt: p.QuotaResetAt, RestCap: p.RestCap, PinUpstream: p.PinUpstream, NativeCompaction: p.NativeCompaction, PromptAsWritten: p.PromptAsWritten, Unredacted: p.Unredacted, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID), Tucked: tuckedAccount(p.ID)}
 	} else {
 		p.AccountProxies = keyProxies(p) // a provider of keys proxies each key apart
 		if subscriptionID(p.ID) && !stored(p.ID) {
@@ -1520,6 +1533,10 @@ func normalize(p Provider) Provider {
 	}
 	if p.MaxConcurrency != nil && *p.MaxConcurrency < 0 {
 		p.MaxConcurrency = new(int)
+	}
+	if p.MaxAccounts != nil {
+		v := min(max(*p.MaxAccounts, 0), MaxLimit)
+		p.MaxAccounts = &v
 	}
 	p.AccountConcurrency = normalAccountConcurrency(p.AccountConcurrency)
 	p.AccountWeights = normalAccountWeights(p.AccountWeights)

@@ -79,6 +79,11 @@ type candidate struct {
 	// what a member listed after it stands in for (standsInFor)
 	member string
 	place  int
+	// reserve is set, to the provider's AtOnce, on an account or key held
+	// back past the first that many (keepAtOnce): tried after them, never
+	// given a request for want of a slot (laneMate) nor kept on by a
+	// conversation (affine)
+	reserve int
 }
 
 // capHold is how an account is held at its usage cap: the cap of the
@@ -230,6 +235,71 @@ func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, a
 // serve the model (provider.AccountModels, #474): never tried, whatever
 // else there is — none, when every one of them is.
 func perKeyBarred(p provider.Provider, model string, from provider.Protocol) (out, aside, left, barred []candidate) {
+	out, aside, left, barred = perKeyEvery(p, model, from)
+	out, aside = keepAtOnce(p.AtOnce(), out, aside)
+	return out, aside, left, barred
+}
+
+// keepAtOnce keeps, of a provider's accounts or keys routed over, the
+// first n in the user's own order (rank, the order the provider's page
+// shows and a drag sets), and holds the rest back as reserves: tried after
+// them, the way a key for another protocol is (aside), and marked so
+// (candidate.reserve). 01huadalang on Discord: ZCode bans the address
+// that three of its accounts are used from at once, while two are let
+// be, and In order alone still spread over all three under load (a full
+// lane gave way to the next account, laneMate, and every busy refusal
+// rested one). The ones kept are those not resting first, so an account
+// at the end of its quota hands its seat to the next in the list, and
+// gets it back once it is back; those resting fill seats only when fewer
+// than n are not. The user's order, not routing's, says who is first, so
+// the set stays the same request to request under In turn or By usage.
+// n of 0 keeps them all.
+func keepAtOnce(n int, out, aside []candidate) ([]candidate, []candidate) {
+	if n <= 0 || len(out)+len(aside) <= n {
+		return out, aside
+	}
+	all := append(slices.Clone(out), aside...)
+	byRank := make([]int, len(all))
+	for i := range byRank {
+		byRank[i] = i
+	}
+	slices.SortStableFunc(byRank, func(a, b int) int { return all[a].rank - all[b].rank })
+	resting := make([]bool, len(all))
+	for i, c := range all {
+		_, resting[i] = restingOf(c)
+	}
+	keep := make([]bool, len(all))
+	kept := 0
+	for _, rested := range []bool{false, true} {
+		for _, i := range byRank {
+			if kept < n && resting[i] == rested && !keep[i] {
+				keep[i], kept = true, kept+1
+			}
+		}
+	}
+	var reserves []candidate
+	for _, i := range byRank {
+		if !keep[i] {
+			c := all[i]
+			c.reserve = n
+			reserves = append(reserves, c)
+		}
+	}
+	keptOf := func(cs []candidate, from int) []candidate {
+		var o []candidate
+		for i, c := range cs {
+			if keep[from+i] {
+				o = append(o, c)
+			}
+		}
+		return o
+	}
+	return keptOf(out, 0), append(keptOf(aside, len(out)), reserves...)
+}
+
+// perKeyEvery is perKeyBarred with every account or key routed over, the
+// provider's AtOnce aside.
+func perKeyEvery(p provider.Provider, model string, from provider.Protocol) (out, aside, left, barred []candidate) {
 	if _, off := provider.ModelDisabled(p.ID, model); off || provider.DisabledUnknown() {
 		return nil, nil, nil, nil // the user disabled it (#1867): never planned, a fallback no more than the model asked
 	}

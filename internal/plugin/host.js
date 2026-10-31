@@ -1970,11 +1970,25 @@ function iconOf(a) {
 // package.json's magpie.maxConcurrency. A whole number over 0, else none
 // (0); the user's setting on the provider goes over it.
 function concurrencyOf(a) {
+  return declared(a, "maxConcurrency")
+}
+
+// atOnceOf is how many of its accounts the plugin says may take requests
+// at the same time, magpie's own field: the auth hook's maxAccounts, else
+// package.json's magpie.maxAccounts, as concurrencyOf reads its own. The
+// user's setting on the provider goes over it.
+function atOnceOf(a) {
+  return declared(a, "maxAccounts")
+}
+
+// declared is a whole number over 0 the plugin declares under key, on its
+// auth hook or else in its package.json's magpie, at most 1000; else 0.
+function declared(a, key) {
   const ok = (v) => (Number.isInteger(v) && v > 0 ? Math.min(v, 1000) : 0)
-  const own = ok(a.auth.maxConcurrency)
+  const own = ok(a.auth[key])
   if (own || !a.target) return own
   const dir = fs.statSync(a.target, { throwIfNoEntry: false })?.isDirectory() ? a.target : path.dirname(a.target)
-  return ok(readJSON(path.join(dir, "package.json"))?.magpie?.maxConcurrency)
+  return ok(readJSON(path.join(dir, "package.json"))?.magpie?.[key])
 }
 
 // rateOf reads a model's credit rate as a plugin gives it: a number (0.5)
@@ -2040,6 +2054,7 @@ async function providers({ proxies } = {}) {
       decide: p.decide === true,
       searches: p.searches === true,
       maxConcurrency: concurrencyOf(a),
+      maxAccounts: atOnceOf(a),
       signedIn: keys.length > 0,
       authType: first?.type ?? "",
       accountId: whoOf(first),

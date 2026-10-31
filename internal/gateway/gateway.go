@@ -3237,6 +3237,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				tt.Done, tt.Status, tt.Error, tt.Queued, tt.Millis = true, call.Status, call.Error, queued, time.Since(began).Milliseconds()
 			})
 			if !last {
+				// a reserve of its provider is not asked in its place: a
+				// full lane fails nobody, and the reserve is held back for
+				// the provider not to be used from one account more at
+				// once (keepAtOnce)
+				cands = dropReserves(cands, i, c.p.ID)
+			}
+			if i < len(cands)-1 {
 				skipped = append(skipped, c.label()+": "+call.Error)
 				continue
 			}

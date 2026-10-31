@@ -170,6 +170,12 @@ type Provider struct {
 	// magpie.maxConcurrency); 0 for none said. The user's setting on the
 	// provider goes over it.
 	MaxConcurrency int `json:"maxConcurrency,omitempty"`
+	// MaxAccounts is how many of its accounts the plugin says may take
+	// requests at the same time (the auth hook's maxAccounts, else
+	// package.json's magpie.maxAccounts: a vendor that blocks an address
+	// asking for more accounts at once); 0 for none said. The user's
+	// setting on the provider goes over it.
+	MaxAccounts int `json:"maxAccounts,omitempty"`
 }
 
 // Option is a switch a plugin declares for its provider (auth.options,
