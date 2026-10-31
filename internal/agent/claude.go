@@ -2484,8 +2484,20 @@ func claudeAliasOption(v string, ms []catalog.Model, tier func(string) string) (
 // of 1M or more marked [1m]: Claude Code takes any other for 200K, and
 // compacts long before a 1M model needs it. It drops the mark before asking.
 // fold marks Same those on the account Claude Code is signed in to, for a
-// picker that lists Claude Code's own models above them.
+// picker that lists Claude Code's own models above them. Each caller has
+// a copy of its own of the list built last (builtOptions): its model and
+// tier fields asked it each poll, for the picker and again for Drift, a
+// list built anew each time, 30 MB of forty polls with real accounts.
 func claudeViaMagpie(fold bool) []Option {
+	key := "\x00claude-via"
+	if fold {
+		key += "-folded"
+	}
+	return builtOptions.get(key, func() []Option { return buildClaudeVia(fold) })
+}
+
+// buildClaudeVia is claudeViaMagpie built afresh.
+func buildClaudeVia(fold bool) []Option {
 	big := map[string]bool{}
 	for _, m := range sharedModels("claude") {
 		big[m.ID] = m.Context >= 1_000_000
