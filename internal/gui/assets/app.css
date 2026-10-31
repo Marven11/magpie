@@ -2615,7 +2615,9 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .row.model .minfo, .rt-gedit .fbrow .minfo { display: inline-flex; align-items: center; gap: 4px; flex: none; margin-left: 8px; cursor: help; }
 .row.model .minfo .badge, .rt-gedit .fbrow .minfo .badge { display: inline-flex; align-items: center; padding: 0 5px; font: var(--ui-style, normal) 600 9.5px/16px var(--ui-font, var(--font)); font-stretch: var(--ui-stretch, 100%); letter-spacing: .02em; text-transform: none; background: var(--pill); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); vertical-align: 0; }
 .row.model .minfo .mi-ctx, .rt-gedit .fbrow .minfo .mi-ctx { font-variant-numeric: tabular-nums; }
-.row.model .minfo .mi-img, .rt-gedit .fbrow .minfo .mi-img { padding: 0 4px; }
+/* the image chip holds a glyph, not a line of text: it is given the text
+   chips' 16px line as its height, so it stands as tall as they do (nb5p) */
+.row.model .minfo .mi-img, .rt-gedit .fbrow .minfo .mi-img { padding: 0 4px; height: 16px; box-sizing: border-box; }
 .row.model .minfo .mi-img svg, .rt-gedit .fbrow .minfo .mi-img svg { display: block; }
 .provider .pswitch { margin-left: 8px; }
 .editor .off-note { grid-column: 1 / -1; }
