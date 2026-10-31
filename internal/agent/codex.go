@@ -28,6 +28,7 @@ import (
 	"github.com/yetone/magpie/internal/codexcat"
 	"github.com/yetone/magpie/internal/codexrelay"
 	"github.com/yetone/magpie/internal/edit"
+	"github.com/yetone/magpie/internal/filememo"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/lastgood"
 	"github.com/yetone/magpie/internal/provider"
@@ -131,29 +132,22 @@ func multiAgentV2OnIn(features map[string]any) (on, set bool) {
 // in-file `profile` key is an error and `--profile` selects a separate
 // {profile}.config.toml layer, so this is not a claim about which profile a
 // modern Codex is running under — only about the same in-file shape magpie's
-// Check reads. The whole file is decoded (edit.Read + toml.Unmarshal, as
-// codexEnableEfforts does). A config magpie can't read is an error, never taken
-// for off.
+// Check reads. The whole file is decoded (codexTopOf, as codexEnableEfforts
+// reads it). A config magpie can't read is an error, never taken for off; no
+// config file has no key, nothing Codex turns V2 on with.
 func codexMultiAgentV2On(path string) (bool, error) {
-	raw, err := edit.Read(path)
+	doc, err := codexTopOf(path)
 	if err != nil {
 		return false, err
 	}
-	if raw == nil { // no config file: no key, nothing Codex turns V2 on with
-		return false, nil
-	}
-	var doc map[string]any
-	if err := toml.Unmarshal(raw, &doc); err != nil {
-		return false, err
-	}
-	top, _ := doc["features"].(map[string]any)
+	top, _ := doc.Features.(map[string]any)
 	on, _ := multiAgentV2OnIn(top)
 	// the legacy in-file profile's features override the top level's, as Codex
 	// 0.133.0 applied them (base then profile) and as magpie's Check reads
 	// profiles.<profile>: take the profile's value when it sets one, else keep
 	// the top level's. Only the profile the config names counts.
-	if profile, _ := doc["profile"].(string); profile != "" {
-		profiles, _ := doc["profiles"].(map[string]any)
+	if profile, _ := doc.Profile.(string); profile != "" {
+		profiles, _ := doc.Profiles.(map[string]any)
 		p, _ := profiles[profile].(map[string]any)
 		pf, _ := p["features"].(map[string]any)
 		if pon, set := multiAgentV2OnIn(pf); set {
@@ -161,6 +155,36 @@ func codexMultiAgentV2On(path string) (bool, error) {
 		}
 	}
 	return on, nil
+}
+
+// codexTop is the tables of Codex's config magpie's looks decode the file
+// for. A config trusting every project Codex was opened in holds thousands
+// of [projects."…"] tables (the owner's 10,932, in 1.5 MB), and decoding
+// those again for each look was 3 MB a look, over 20 MB a catalog sync.
+type codexTop struct {
+	Features       any `toml:"features"`
+	ModelProviders any `toml:"model_providers"`
+	Desktop        any `toml:"desktop"`
+	Profile        any `toml:"profile"`
+	Profiles       any `toml:"profiles"`
+}
+
+// codexTopOf is the config at path as codexTop, decoded again only once the
+// file changes; it is looked at each time (filememo.ReadNow), as what is
+// written is made from it. What it returns is shared: nothing in it is
+// changed. A missing file is an empty config.
+func codexTopOf(path string) (*codexTop, error) {
+	doc, err := filememo.ReadNow("codex top", path, func(b []byte) (*codexTop, error) {
+		var doc codexTop
+		if err := toml.Unmarshal(edit.TrimBOM(b), &doc); err != nil {
+			return nil, err
+		}
+		return &doc, nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return &codexTop{}, nil
+	}
+	return doc, err
 }
 
 // codexSubAgentsV1Warning is the notice for the config Codex is routed
@@ -867,18 +891,16 @@ func codexIn(at place) *Agent {
 	putThreadTables := func() error {
 		// the providers config.toml has, however spelled (a table, inline,
 		// dotted keys); one that doesn't parse is left alone
-		raw, err := edit.Read(path)
+		doc, err := codexTopOf(path)
 		if err != nil {
 			return nil
 		}
-		var cfg struct {
-			Providers map[string]any `toml:"model_providers"`
-		}
-		if toml.Unmarshal(raw, &cfg) != nil {
+		providers, ok := doc.ModelProviders.(map[string]any)
+		if !ok && doc.ModelProviders != nil {
 			return nil
 		}
 		for _, id := range sessions.CodexThreadProviders(dir) {
-			if _, ok := cfg.Providers[id]; ok || id == magpieID || codexBuiltinProvider[id] {
+			if _, ok := providers[id]; ok || id == magpieID || codexBuiltinProvider[id] {
 				continue
 			}
 			if err := edit.SetTOMLTable(path, "model_providers."+id,
@@ -2048,22 +2070,20 @@ var (
 // setting for it. A [desktop] spelled some other way (inline, dotted
 // keys) is left alone.
 func codexEnableEfforts(path string, ms []catalog.Model) error {
-	raw, err := edit.Read(path)
+	doc, err := codexTopOf(path)
 	if err != nil {
 		return nil
 	}
-	var cfg struct {
-		Desktop map[string]any `toml:"desktop"`
-	}
-	if err := toml.Unmarshal(raw, &cfg); err != nil {
+	desktop, ok := doc.Desktop.(map[string]any)
+	if !ok && doc.Desktop != nil {
 		return nil
 	}
 	on := codexAppEffortsOn
-	if cfg.Desktop != nil {
+	if desktop != nil {
 		if tables, _ := edit.TOMLTables(path); !slices.Contains(tables, "desktop") {
 			return nil
 		}
-		if v, ok := cfg.Desktop["enabled-reasoning-efforts"]; ok {
+		if v, ok := desktop["enabled-reasoning-efforts"]; ok {
 			xs, ok := v.([]any)
 			if !ok {
 				return nil
