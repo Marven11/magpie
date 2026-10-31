@@ -71,14 +71,25 @@ func lastStatePath() string { return filepath.Join(appdir.Cache(), "agents-state
 // (edit.WriteAtomic's would: every poll of the Agents page rebuilt each
 // agent's model list and picker, and every provider's catalog, anew).
 func keepState(s stateJSON) {
-	s.Settings = settings.Settings{}
-	// and what is told once: a notice, a file recovered after a crash
-	s.Notice, s.Connected, s.Recovered = "", nil, nil
-	f := stateFile{Version: Version, State: s}
-	sum, err := encodedSum(f)
+	sum, err := encodedSum(keptFile(s))
 	if err != nil {
 		return
 	}
+	keepStateSummed(s, sum)
+}
+
+// keptFile is what keepState keeps of s.
+func keptFile(s stateJSON) stateFile {
+	s.Settings = settings.Settings{}
+	// and what is told once: a notice, a file recovered after a crash
+	s.Notice, s.Connected, s.Recovered = "", nil, nil
+	return stateFile{Version: Version, State: s}
+}
+
+// keepStateSummed is keepState given sum, encodedSum(keptFile(s)), found
+// while s was written (writeStateJSON).
+func keepStateSummed(s stateJSON, sum [32]byte) {
+	f := keptFile(s)
 	lastState.Lock()
 	defer lastState.Unlock()
 	if !lastState.read {
