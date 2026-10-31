@@ -214,6 +214,18 @@ func validLogins(b []byte) bool {
 }
 
 func readLogins() []savedLogin {
+	loginsCopied.Add(1)
+	return slices.Clone(sharedLogins()) // callers change theirs
+}
+
+// loginsCopied counts readLogins' copies, for a test.
+var loginsCopied atomic.Int64
+
+// sharedLogins is readLogins without the caller's own copy: the accounts
+// as kept, read only. A page's state lists a dozen agents' accounts, and
+// a copy of the whole list for each was 61 MB of what twenty window polls
+// allocated.
+func sharedLogins() []savedLogin {
 	if settings.AccountDiscoveryOff() {
 		return nil
 	}
@@ -243,7 +255,7 @@ func readLogins() []savedLogin {
 			log.Printf("logins.json: %v; %v", err, ferr)
 		}
 	}
-	return slices.Clone(ls) // callers change theirs
+	return slices.Clip(ls) // an append makes the caller's own
 }
 
 // unreadBytes are a file's bytes, nil when it can't be read: for the log
