@@ -44,6 +44,11 @@ const (
 	// (routes.Cheapest). A group's only: a provider's keys and accounts
 	// all bill its one price.
 	Cheapest = "cheap"
+	// Drain stays on one key or account until it is used up, then goes
+	// on to the next in the listed order, and stays on that one: one
+	// before it that renews meanwhile doesn't take its requests back
+	// (dzxx0496 on Discord; routes.Drain).
+	Drain = "drain"
 )
 
 // pluginRouting is a routing a plugin serves: "<plugin>/<name>".

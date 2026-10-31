@@ -120,8 +120,10 @@ type Provider struct {
 	// its window resets first, so less allowance is lost at reset.
 	// The window can be shorter than a week. "weight" by each key's
 	// weight, a key with 3 taking three requests to one with 1's.
-	// Whichever it is, one out of credit, out of quota, rate limited or
-	// failing is passed over for as long as that lasts.
+	// "drain" one until it is used up, then the next, which keeps them
+	// when an earlier one renews (routes.Drain). Whichever it is, one out
+	// of credit, out of quota, rate limited or failing is passed over for
+	// as long as that lasts.
 	Routing string `json:"routing,omitempty"`
 
 	// Sink sends a key or account that a 429 rate limited while it still
@@ -1522,7 +1524,7 @@ func normalize(p Provider) Provider {
 	if (p.Preset == OMLXPreset || p.Preset == MLXServePreset || p.Preset == "ollama" || p.Preset == "ollama-cloud") && p.Decide == "" && p.Chat != "" {
 		p.Decide = p.Chat
 	}
-	if p.Routing != Ordered && p.Routing != Rotate && p.Routing != LeastUsed && p.Routing != Pace && p.Routing != Weighted && p.Routing != FreeFirst && p.Routing != Fastest && !PluginRouting(p.Routing) {
+	if p.Routing != Ordered && p.Routing != Rotate && p.Routing != LeastUsed && p.Routing != Pace && p.Routing != Weighted && p.Routing != FreeFirst && p.Routing != Fastest && p.Routing != Drain && !PluginRouting(p.Routing) {
 		p.Routing = ""
 	}
 	if !slices.Contains(Affinities, p.Affinity) {

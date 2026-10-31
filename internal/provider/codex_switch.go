@@ -118,9 +118,9 @@ const SpentShare = 98
 // SpentShareOf is the share past which routing counts an account spent:
 // SpentShare, but In order sends requests to the first until a window of it
 // is used up or the vendor refuses it, so there an account at 98% is still
-// tried in its turn (#530).
+// tried in its turn (#530); Until used up stays on one until then too.
 func SpentShareOf(routing string) float64 {
-	if routing == Ordered {
+	if routing == Ordered || routing == Drain {
 		return 100
 	}
 	return SpentShare

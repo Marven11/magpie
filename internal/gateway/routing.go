@@ -1532,6 +1532,12 @@ func (s *Server) restAfterMarked(c candidate, status int, header http.Header, bo
 		restingUntil.note[id] = r
 	}
 	restingUntil.Unlock()
+	if id == c.restKey() && (why == failQuota || why == failCredit) {
+		// a pool routed Until used up goes on from it, though it renews
+		// before the pool's next request (dzxx0496); one model of it
+		// refused leaves the account in use for the others
+		routes.Drained(c.rest)
+	}
 	if kept {
 		saveRests() // a magpie started again rests it out, and climbs on
 	}
@@ -2063,7 +2069,7 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 		}
 		seats[i] = routes.Seat{Key: c.rest, Account: c.p.Account != nil, Known: known, Learns: learns(c, wg.lefts),
 			Used: l.used, Soon: l.soon, Lapse: l.lapse, Pace: pace, Weight: keyWeight(c), Resting: resting(c), Tokens: routed.used[c.restKey()].now(now), Credits: l.credits,
-			Left: l.bal, LeftIn: l.balIn}
+			Left: l.bal, LeftIn: l.balIn, Spent: spentRest(c)}
 	}
 	routed.Unlock()
 	if st.ByUse {
