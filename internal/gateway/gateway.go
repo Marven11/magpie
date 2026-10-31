@@ -1864,13 +1864,15 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	var maskedHits maskHits
 	maskDone, sentWhole := false, false
 	unmask := func() {}
-	// the reply's model the member that answered, when asked for (#822).
-	// Both writers hold a whole body until the handler is done, the namer
+	askedFor := modelOf(body) // as it reaches serve, which an error in its stream names (keptAlive)
+	// the reply's model the one asked for when it went out under another
+	// name, or the member that answered, when asked for (#822). Both
+	// writers hold a whole body until the handler is done, the namer
 	// outside: the values are put back first, into the namer, and then it
 	// writes what it holds. The other way round it wrote nothing, and the
 	// values came back after it, into a buffer no one wrote: a 200 with
 	// an empty body whenever a value was masked (#4129)
-	w, r, named := withMemberNames(w, r)
+	w, r, named := withMemberNames(w, r, from, askedFor)
 	defer func() {
 		unmask()
 		named()
@@ -1881,7 +1883,6 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	wholeBodies := usage.ObservedBodies() == usage.WholeBodies
 	// a model asked for at an effort of its own (a Claude Code tier, #536)
 	// is the model, every try of it asked for that effort
-	askedFor := modelOf(body) // as it reaches serve, which an error in its stream names (keptAlive)
 	asked, askedEffort := askedAt(askedFor)
 	if askedEffort != "" {
 		body = rewriteModel(body, asked)

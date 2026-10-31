@@ -334,9 +334,14 @@ type Settings struct {
 	CheckinOff []string `json:"checkinOff,omitempty"`
 	// MemberModel has a reply's model name the routing group's member
 	// that answered, as magpie's provider/model id (workbuddy/glm-5.3-flash),
-	// rather than the vendor's own name for it, for agents that count
-	// usage by the reply's model (#822). Claude Code, Claude Desktop and
-	// Codex always get the vendor's name: they read it themselves.
+	// for agents that count usage by the reply's model (#822). Off, as by
+	// default, a reply sent under another name than the one asked for (a
+	// group's member, a model's own id, a provider/model id) names the
+	// model the agent asked for (issennknight on Discord: an agent warned
+	// that deepseek-v4.1-flash came back as deepseek-v4.1-flash-1017);
+	// one the vendor named as asked keeps the vendor's name, a dated one
+	// too. Claude Code, Claude Desktop and Codex never get the member's
+	// id: they read the name themselves (gateway's replyNamingOf).
 	MemberModel bool `json:"memberModel,omitempty"`
 	// NoLoopGuard lets a streamed reply run on when its reasoning or text
 	// is stuck in a loop of the same few lines (#1359). Off, as by
