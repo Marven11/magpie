@@ -1878,8 +1878,23 @@ func (p Provider) Where() string {
 // IsOpenCode reports whether the provider is OpenCode's gateway (Zen or Go),
 // which routes and caches by conversation and turns away requests that do
 // not name one in x-opencode-session.
-func (p Provider) IsOpenCode() bool {
-	return OpenCodeURL("//" + p.Host()) // its port, if it names one, aside
+func (p Provider) IsOpenCode() bool { return openCodeAt(p.Host()) }
+
+// openCodeAt is OpenCodeURL for a host as Host gives it, its port and
+// any user aside, read without parsing a URL: the providers' page asks
+// IsOpenCode for each model, and url.Parse there was 7 MB of what twenty
+// window polls allocated.
+func openCodeAt(h string) bool {
+	if i := strings.LastIndexByte(h, '@'); i >= 0 {
+		h = h[i+1:]
+	}
+	if strings.HasPrefix(h, "[") {
+		return false // an IPv6 address
+	}
+	if i := strings.IndexByte(h, ':'); i >= 0 {
+		h = h[:i]
+	}
+	return openCodeHost(h)
 }
 
 // IsBedrock reports whether the provider is Amazon Bedrock: its runtime
