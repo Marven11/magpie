@@ -667,7 +667,7 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 		Chat: p.Chat, Responses: p.Responses, Anthropic: p.Anthropic, Gemini: p.Gemini, Decide: p.Decide, BaseAPI: p.BaseAPI, ModelTest: p.ModelTest(), TestsAs: p.TestClients(), DecideTest: p.AsksDecideModels(), MarksKinds: p.MarksKinds(),
 		Catalog: p.Catalog, Website: p.Website, KeysURL: p.KeysURL,
 		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, AccountCaps: p.AccountCaps, AccountWindowCaps: p.AccountWindowCaps, AccountNames: p.AccountNames, Headers: p.Headers, ExtraBody: p.ExtraBody, ReplyHeaders: p.ReplyHeaders, Searches: p.Searches, Cline: p.ClinePinnable(), PinUpstream: p.PinUpstream, Unredacted: p.Unredacted, CountFree: p.CountFree, InsecureTLS: p.InsecureTLS, TakesInsecureTLS: p.TakesInsecureTLS(), LimitRestOff: p.LimitRestOff, NativeCompaction: p.NativeCompaction, CarriesCompaction: p.CarriesCompaction(), PassUserAgent: p.PassUserAgent, OwnClient: p.OwnClient(), AuthHeader: p.AuthHeader, BothAuth: p.BothAuth(), BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, BalanceMethod: p.BalanceMethod, ModelsURL: p.ModelsURL,
-		Ready: p.Ready(), Chosen: p.PicksOf(avail), Models: []modelJSON{}, Agents: []providerAgent{},
+		Ready: p.Ready(), Chosen: p.PicksOf(avail), Models: make([]modelJSON, 0, len(avail)), Agents: []providerAgent{},
 		Fallback: p.Fallback, Routing: p.Routing, Sink: p.Sink, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, SwitchOnly: p.SwitchOnly, CapStop: p.CapStop, CapCareful: p.CapCareful, Unlisted: p.Unlisted, NoModels: p.ServesNone(), BestInFamily: p.BestInFamily && len(p.Models) == 0 && !p.NoModels, Off: p.Off, Contexts: p.Contexts,
 		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(), PriceRate: p.PriceRate,
 		RateWindows: p.RateWindows, RateNow: rateNowOf(p, time.Now()),
@@ -906,10 +906,13 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 			out.Models = append(out.Models, named(m, exposed[m.ID]))
 		}
 	}
-	// picks the vendor list does not know go first, so they are visible
+	// picks the vendor list does not know go first, so they are visible,
+	// the last one picked foremost; put in front all at once: a fresh list
+	// for each was 13 MB of what twenty window polls allocated
+	var front []modelJSON
 	for _, m := range exposedList {
 		if !seen[m.ID] {
-			out.Models = append([]modelJSON{named(m, true)}, out.Models...)
+			front = append(front, named(m, true))
 			// one picked by hand that is a decision model all the same
 			// (OpenRouter's inception/mercury-decide:free, coeo91 on
 			// Discord) is tested and marked as one in the editor
@@ -918,6 +921,8 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 			}
 		}
 	}
+	slices.Reverse(front)
+	out.Models = slices.Insert(out.Models, 0, front...)
 	if deciders != nil {
 		out.Deciders = &deciders
 	}
