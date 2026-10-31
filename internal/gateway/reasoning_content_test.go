@@ -205,3 +205,48 @@ func TestForeignSealedReasoningRelayedCarriesNoContent(t *testing.T) {
 		assertResendable(t, it, "counting the lines")
 	}
 }
+
+// A whole reply relayed as it came goes through the same tidy, whichever
+// filter before it held the reply to its end: a plain model's, and a
+// glm-5.3-flash replica's, which crArgs holds whole first (#4256). Before,
+// what crArgs held went on past the tidy, the item handed over as it came.
+func TestForeignSealedReasoningWholeReplyCarriesNoContent(t *testing.T) {
+	for _, model := range []string{"deepseek-flash", "glm-5.3-flash"} {
+		t.Run(model, func(t *testing.T) {
+			fresh(t)
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/models") {
+					io.WriteString(w, `{"models":[{"slug":"`+model+`","visibility":"list"}]}`)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"id":"resp_dsk","object":"response","model":"`+model+`","status":"completed","output":[`+dskItem+`,{"type":"message","id":"msg1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"42 lines"}]}],"usage":{"input_tokens":5,"output_tokens":2}}`)
+			}))
+			t.Cleanup(up.Close)
+			if err := provider.Save(provider.Provider{ID: "dsk", Name: "DSK", Key: "k", Models: []string{model}, Responses: up.URL + "/v1"}); err != nil {
+				t.Fatal(err)
+			}
+			body := `{"model":"dsk/` + model + `","stream":false,"store":false,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"count the lines"}]}]}`
+			rec := codexPostTo(New(), body)
+			if rec.Code != 200 || !strings.Contains(rec.Body.String(), "42 lines") {
+				t.Fatalf("%d %s", rec.Code, rec.Body)
+			}
+			var res struct {
+				Output []map[string]any `json:"output"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+				t.Fatalf("%v: %s", err, rec.Body)
+			}
+			n := 0
+			for _, it := range res.Output {
+				if it["type"] == "reasoning" {
+					n++
+					assertResendable(t, it, "counting the lines")
+				}
+			}
+			if n != 1 {
+				t.Fatalf("%d reasoning items in the reply: %s", n, rec.Body)
+			}
+		})
+	}
+}

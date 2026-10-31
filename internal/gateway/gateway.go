@@ -5821,6 +5821,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		if crArgs != nil {
 			b = crArgs.write(b)
 		}
+		if made != nil {
+			b = made.write(b)
+		}
 		if ints != nil {
 			b = ints.write(b)
 		}
@@ -5857,6 +5860,11 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	}
 	if crArgs != nil {
 		b := crArgs.flush()
+		if made != nil {
+			// made holds a whole reply until its own drain below, as ints
+			// does: a reply crArgs held to its end goes through it too
+			b = made.write(b)
+		}
 		if ints != nil {
 			// ints holds a whole reply until its own drain below, so the
 			// tail ints has not seen goes through it here first
@@ -5868,7 +5876,16 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		write(out(b))
 	}
 	if made != nil {
-		write(sign(made.flush()))
+		// past crArgs, drained above: what made held goes on through the
+		// filters after it only
+		b := made.flush()
+		if ints != nil {
+			b = ints.write(b)
+		}
+		if sigs != nil {
+			b = sigs.write(b)
+		}
+		write(out(b))
 	}
 	if ints != nil {
 		b := ints.flush()
