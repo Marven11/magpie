@@ -807,7 +807,9 @@ func providerInfoWith(p provider.Provider, agents []agentUse, desktop map[string
 	}
 	seen := map[string]bool{}
 	names, kept := p.ModelNames(), p.ModelEfforts()
-	held := settings.Load()
+	// only read, so the settings every look shares: a copy of its own for
+	// each provider was 16 MB of what twenty window polls allocated
+	held := settings.Shared()
 	sames := held.ModelSameAs
 	// a list fetched before magpie kept each model's most: the one Codex
 	// CLI keeps says it
@@ -818,7 +820,7 @@ func providerInfoWith(p provider.Provider, agents []agentUse, desktop map[string
 	// read once for the list: read for each model, three times over, it
 	// was most of the Providers page's wait with many models (lml on
 	// Discord, Windows)
-	set := settings.Load()
+	set := held
 	named := func(m catalog.Model, on bool) modelJSON {
 		images := m.Images || catalog.SeesImages(m.ID)
 		if m.ImageInput != nil {

@@ -1686,7 +1686,7 @@ func GatewayAddr() string {
 // magpie whose settings these are, which one the variable moves (magpie-dev,
 // a sandbox) runs beside.
 func SavedAddr() string {
-	p := Load().Port
+	p := Shared().Port
 	if p == 0 || CheckPort(p) != nil {
 		p = DefaultPort
 	}
