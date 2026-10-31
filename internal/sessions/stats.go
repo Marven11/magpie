@@ -836,7 +836,7 @@ func toolUse(in []*Summary, first time.Time, n int) ToolUse {
 			key := strings.ToLower(name) // one tool apiece, its spellings together
 			t := tools[key]
 			if t == nil {
-				t = &ToolStat{Name: name, Category: ToolCategory(name)}
+				t = &ToolStat{Name: name}
 				tools[key] = t
 			}
 			t.Calls += c
@@ -846,16 +846,19 @@ func toolUse(in []*Summary, first time.Time, n int) ToolUse {
 			}
 			said[name] += c
 			if best := shown[key]; best == "" || said[name] > said[best] || (said[name] == said[best] && name < best) {
-				shown[key] = name // its most called spelling, the shorter name on a tie
+				shown[key] = name // its most called spelling, the first in byte order on a tie
 			}
-			cat := cats[t.Category]
+			// the legend counts each spelling under its own category, as
+			// the weeks do (pd.tools): "task" and "Task" are two there
+			k := ToolCategory(name)
+			cat := cats[k]
 			if cat == nil {
-				cat = &ToolStat{Name: t.Category}
-				cats[t.Category] = cat
+				cat = &ToolStat{Name: k}
+				cats[k] = cat
 			}
 			cat.Calls += c
-			if !seen[t.Category] {
-				seen[t.Category] = true
+			if !seen[k] {
+				seen[k] = true
 				cat.Sessions++
 			}
 		}
