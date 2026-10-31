@@ -24,6 +24,9 @@ type entry struct {
 	// milliseconds) coarse, so two writes of one size inside a tick (two
 	// accounts swapped) leave the same time and size
 	raw []byte
+	// again is the buffer the file is read into again while raw is kept,
+	// to be compared with it
+	again []byte
 	// when the file was last found unchanged, while a request held them
 	// (Hold), and in which of Forget's generations
 	checked time.Time
@@ -207,25 +210,69 @@ func read[T any](kind, path string, parse func([]byte) (T, error), held bool) (T
 		mu.Unlock()
 		return e.v.(T), nil
 	}
+	if ok && e.raw != nil && e.mod.Equal(fi.ModTime()) && e.size == fi.Size() {
+		// written just now and the same size and time: most often the
+		// same bytes, read into the buffer kept for it rather than a new
+		// one each time. A read beside this one takes a buffer of its own.
+		mu.Lock()
+		buf := seen[key].again
+		if cur, ok := seen[key]; ok {
+			cur.again = nil
+			seen[key] = cur
+		}
+		mu.Unlock()
+		if int64(cap(buf)) <= fi.Size() {
+			buf = make([]byte, 0, fi.Size()+512)
+		}
+		b, err := steady.ReadThereInto(path, buf)
+		if err != nil {
+			return zero, err
+		}
+		if bytes.Equal(b, e.raw) {
+			mu.Lock()
+			if cur, ok := seen[key]; ok && cur.again == nil && cur.mod.Equal(e.mod) {
+				cur.again = b[:0]
+				seen[key] = cur
+			}
+			mu.Unlock()
+			settle(key, e)
+			return e.v.(T), nil
+		}
+		// the buffer was this read's alone: it is what was parsed now
+		return parsed(key, fi, b, parse, g)
+	}
 	b, err := steady.ReadThere(path)
 	if err != nil {
 		return zero, err
 	}
 	if ok && e.mod.Equal(fi.ModTime()) && bytes.Equal(b, e.raw) {
-		if time.Since(e.mod) > settled {
-			mu.Lock()
-			e.raw = nil
-			seen[key] = e
-			mu.Unlock()
-		}
+		settle(key, e)
 		return e.v.(T), nil
 	}
+	return parsed(key, fi, b, parse, g)
+}
+
+// settle drops e's bytes once its file's time is old enough to tell a
+// later write by: from then on its time and size are looked at alone.
+func settle(key string, e entry) {
+	if time.Since(e.mod) > settled {
+		mu.Lock()
+		e.raw, e.again = nil, nil
+		seen[key] = e
+		mu.Unlock()
+	}
+}
+
+// parsed is parse of b, the file at key's bytes as fi found it, kept for
+// the next read; g is Forget's generation when it was looked at.
+func parsed[T any](key string, fi os.FileInfo, b []byte, parse func([]byte) (T, error), g uint64) (T, error) {
 	v, err := parse(b)
 	if err != nil {
+		var zero T
 		return zero, err
 	}
 	mu.Lock()
-	e = entry{mod: fi.ModTime(), size: fi.Size(), v: v}
+	e := entry{mod: fi.ModTime(), size: fi.Size(), v: v}
 	if time.Since(e.mod) <= settled {
 		e.raw = b
 	} else if holds > 0 && g == gen {
