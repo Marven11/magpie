@@ -45,7 +45,7 @@ func TestRecentFileReadAgainIntoOneBuffer(t *testing.T) {
 	if parses != 1 {
 		t.Fatalf("the same bytes parsed %d times", parses)
 	}
-	if e := seen["reread\x00"+p]; e.raw == nil {
+	if e := seen[memoKey{"reread", p}]; e.raw == nil {
 		t.Fatal("the file written just now is not compared byte by byte")
 	}
 	// reads at once each read into a buffer of their own
@@ -74,7 +74,7 @@ func TestRecentFileReadAgainIntoOneBuffer(t *testing.T) {
 		t.Fatalf("a write of the same size and time read as %v %v", v, err)
 	}
 	// what was parsed is its own, not the buffer read into again
-	if e := seen["reread\x00"+p]; !bytes.Equal(e.raw, other) {
+	if e := seen[memoKey{"reread", p}]; !bytes.Equal(e.raw, other) {
 		t.Fatal("the bytes kept are not the file's")
 	}
 	if err := os.WriteFile(p, big, 0o600); err != nil {
@@ -84,7 +84,7 @@ func TestRecentFileReadAgainIntoOneBuffer(t *testing.T) {
 		t.Fatal(err)
 	}
 	Read("reread", p, parse2)
-	if e := seen["reread\x00"+p]; !bytes.Equal(e.raw, big) {
+	if e := seen[memoKey{"reread", p}]; !bytes.Equal(e.raw, big) {
 		t.Fatal("the bytes kept were written over by the next read")
 	}
 }
