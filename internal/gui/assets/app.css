@@ -3991,7 +3991,17 @@ body.panel .modal { padding: 16px 12px; }
   }
   body.web .foot .status { min-width: 0; overflow-wrap: anywhere; }
   body.web .row-head { height: auto; min-height: 40px; flex-wrap: wrap; gap: 4px; }
-  body.web .text, body.web .field, body.web .segs .opt, body.web .copy { min-height: 44px; }
+  body.web .text, body.web .field, body.web .copy { min-height: 44px; }
+  /* A choice of options is drawn at iOS's segmented height, 32px, and
+     taken at a finger's 44: its options drawn 44px tall made every strip
+     a fat block on a phone. The tap's room is each option's own ::after,
+     reaching past the strip above and below it; a strip that scrolls
+     sideways clips it rather than scroll up and down by it. */
+  body.web .segs { border-radius: 8px; }
+  body.web .segs .thumb { border-radius: 6px; }
+  body.web .segs .opt { height: 28px; padding: 0 11px; font-size: 13px; }
+  body.web .segs .opt::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; }
+  body.web :is(.segs.regions, .connect .segs, .pm-ghbar .segs, .ctx-contents-head .segs, .editor.importapps .approw .segs) { overflow-y: hidden; }
   body.web .text { padding: 8px 10px; }
   body.web .copy { min-width: 44px; }
   body.web .fields { width: 100%; grid-template-columns: minmax(0, 1fr) minmax(0, 124px); }
