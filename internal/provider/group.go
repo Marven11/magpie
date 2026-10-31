@@ -1593,9 +1593,18 @@ func GroupsWith(id string) []Group {
 // by the model's "provider/model" id; a member fixed at an effort counts as
 // its model, and a group removed is none. A provider kept for routing
 // groups (Provider.Unlisted) reaches agents through these alone: a model
-// of it in none of them is used by nothing.
+// of it in none of them is used by nothing. Held while a request holds the
+// catalog, so it is shared, only for reading: the providers' page asked
+// for it once for each provider, 11.6 MB of what twenty polls allocated.
 func MemberGroups() map[string][]string {
-	entries := providerEntries()
+	return heldFrom("member-groups", providerEntries(), memberGroupsIn)
+}
+
+// memberGroupsBuilt counts MemberGroups built, for a test.
+var memberGroupsBuilt atomic.Int64
+
+func memberGroupsIn(entries []Entry) map[string][]string {
+	memberGroupsBuilt.Add(1)
 	out := map[string][]string{}
 	for _, g := range groupsIn(entries) {
 		if g.Hidden {

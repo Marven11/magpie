@@ -2820,8 +2820,12 @@ func unlistedByGroups(entries []Entry) map[string][]string {
 // names: a provider's editor names them, as a model its own switch put
 // back for agents is still left out by them. A signed-in subscription's
 // models, which agents keep (SubscriptionKept), aren't among them.
+// Held as MemberGroups is: shared, only for reading.
 func GroupKept() map[string][]string {
-	entries := providerEntries()
+	return heldFrom("group-kept", providerEntries(), groupKeptIn)
+}
+
+func groupKeptIn(entries []Entry) map[string][]string {
 	kept := unlistedByGroups(entries)
 	if len(kept) == 0 {
 		return nil
