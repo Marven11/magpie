@@ -1687,19 +1687,26 @@ var speaksLooked atomic.Int64
 // Speaks lists the protocols the vendor serves natively, preferred first.
 func (p Provider) Speaks() []Protocol {
 	speaksLooked.Add(1)
+	return slices.Collect(p.speaking)
+}
+
+// speaking is Speaks one protocol at a time, for a look that wants only
+// the first (Host): a list built for it was 8 MB of what twenty polls of
+// the Providers page allocated with real accounts.
+func (p Provider) speaking(yield func(Protocol) bool) {
 	// a Google sign-in speaks Code Assist, and only that
 	if p.Account != nil && p.Account.codeAssist != "" && !p.IsPlugin() {
-		return []Protocol{CodeAssist}
+		yield(CodeAssist)
+		return
 	}
-	var out []Protocol
 	for _, pr := range Protocols {
-		if p.Base(pr) != "" {
-			out = append(out, pr)
+		if p.Base(pr) != "" && !yield(pr) {
+			return
 		}
 	}
 	// a plugin's Gemini models, beside what else it serves
-	if p.IsPlugin() && p.Account.codeAssist != "" {
-		out = append(out, CodeAssist)
+	if p.IsPlugin() && p.Account.codeAssist != "" && !yield(CodeAssist) {
+		return
 	}
 	// Factory's Gemini models, on generateContent. A model droid didn't
 	// list stays on the other three (factoryAPIs); this is not one of them.
@@ -1710,12 +1717,11 @@ func (p Provider) Speaks() []Protocol {
 	// one).
 	if p.IsVertex() {
 		if p.vertexBase() != "" {
-			out = append(out, Gemini)
+			yield(Gemini)
 		}
 	} else if p.FactoryGemini() || p.Gemini != "" {
-		out = append(out, Gemini)
+		yield(Gemini)
 	}
-	return out
 }
 
 // FactoryGemini is Factory's sign-in, whose Gemini models are asked on its
@@ -1850,7 +1856,7 @@ func (p Provider) Host() string {
 	if p.Account != nil && p.Account.moved {
 		return p.Account.wasHost // not plugin://<id>
 	}
-	for _, pr := range p.Speaks() {
+	for pr := range p.speaking {
 		if u := p.Base(pr); u != "" {
 			return HostOf(u)
 		}
