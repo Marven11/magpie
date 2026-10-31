@@ -71,12 +71,17 @@ func described() bool { return Described != nil && Described() }
 // catalog was ~140 MB of what twenty polls allocated. Each caller gets
 // its own copy of the lists.
 func CatalogFor(agent string) (shown, hidden []Entry) {
-	c := keptOf("catalog-for\x00"+agent, func() catalogLists {
+	c := catalogKept(agent)
+	return slices.Clone(c.shown), slices.Clone(c.hidden)
+}
+
+// catalogKept is CatalogFor's lists as kept, only for reading.
+func catalogKept(agent string) catalogLists {
+	return keptOf("catalog-for\x00"+agent, func() catalogLists {
 		catalogsBuilt.Add(1)
 		s, h := catalogFor(agent)
 		return catalogLists{slices.Clip(s), slices.Clip(h)}
 	})
-	return slices.Clone(c.shown), slices.Clone(c.hidden)
 }
 
 type catalogLists struct{ shown, hidden []Entry }
