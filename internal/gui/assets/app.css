@@ -2434,7 +2434,8 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 /* Hide accounts, on Routing, Usage and (its own switch) Providers. On, it
    says so in its struck eye and its words, a shade darker: a page tool,
    not a banner */
-.rt-mask { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.rt-mask { display: inline-flex; align-items: center; gap: 5px; }
+#view-providers .pv-head > .rt-mask { flex: none; }
 .rt-mask svg { width: 13px; height: 13px; flex: none; }
 .rt-mask[aria-pressed="true"] { color: var(--fg-2); }
 #view-providers .pv-q { flex: 0 1 220px; min-width: 120px; }
