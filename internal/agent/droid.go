@@ -320,7 +320,7 @@ func droidIn(at place) *Agent {
 			ms = append(ms, c.raw)
 		}
 		if with {
-			saved := stashLoad()[keyWrote]
+			saved := stashShared()[keyWrote]
 			var last map[string]map[string]json.RawMessage
 			json.Unmarshal([]byte(saved), &last)
 			wrote := map[string]map[string]json.RawMessage{}

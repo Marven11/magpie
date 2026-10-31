@@ -254,7 +254,7 @@ func plugged(home string, p *agentplug.Agent) *Agent {
 	at := here(home)
 	saved := func() (pluggedStash, bool) {
 		var st pluggedStash
-		v := stashLoad()[key]
+		v := stashShared()[key]
 		return st, v != "" && json.Unmarshal([]byte(v), &st) == nil
 	}
 	save := func(st pluggedStash) {

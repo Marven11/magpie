@@ -462,7 +462,7 @@ func qwenpawAt(at place, work string, p qwenpawProfile) *Agent {
 func unstashPeek(k string) string {
 	stashMu.Lock()
 	defer stashMu.Unlock()
-	return stashLoad()[k]
+	return stashShared()[k]
 }
 
 // qwenpawNamesMagpie says an agent of QwenPaw's still names magpie's

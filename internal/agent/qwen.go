@@ -212,7 +212,7 @@ func qwenIn(at place) *Agent {
 			// the user's own value is stashed once, whatever it is —
 			// "openai" of their own too, or it can't be told from
 			// magpie's on a later wire or Sync and comes off with it
-			if _, seen := stashLoad()[keyAuthSeen]; !seen {
+			if _, seen := stashShared()[keyAuthSeen]; !seen {
 				kv := map[string]string{keyAuthSeen: "1"}
 				if v, ok := edit.GetJSON(path, qwenAuth); ok {
 					kv[keyAuth] = v

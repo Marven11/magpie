@@ -198,7 +198,7 @@ func codexAsyncSync(path, key string, routed, on bool, percent int, tableOK bool
 		return err
 	}
 	var st codexAsyncStash
-	if raw := stashLoad()[key]; raw != "" {
+	if raw := stashShared()[key]; raw != "" {
 		json.Unmarshal([]byte(raw), &st)
 	}
 	was := st
@@ -375,7 +375,7 @@ func codexAsyncOwn(home string) string {
 		return ""
 	}
 	var st codexAsyncStash
-	if raw := stashLoad()[at.key("codex.async")]; raw != "" {
+	if raw := stashShared()[at.key("codex.async")]; raw != "" {
 		json.Unmarshal([]byte(raw), &st)
 	}
 	bare := "features.async_compaction"

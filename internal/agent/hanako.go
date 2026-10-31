@@ -142,7 +142,7 @@ func hanako(home string) *Agent {
 					}
 					if onMagpie() {
 						// the stash goes only once the model is back
-						if err := hanakoBack(dir, agent, stashLoad()[key()]); err != nil {
+						if err := hanakoBack(dir, agent, stashShared()[key()]); err != nil {
 							return err
 						}
 						forget(key())

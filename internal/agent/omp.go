@@ -492,7 +492,7 @@ func ompAt(at place, dir string, entry func() ompProviderEntry) *Agent {
 			}
 			scopeGoneRename(gone, from, to)
 			for _, w := range was {
-				s := stashLoad()[w]
+				s := stashShared()[w]
 				ns := move(s)
 				if ompYAMLList(s) {
 					t, err := edit.EditYAMLTextStrings(edit.YAMLText(s), move)
