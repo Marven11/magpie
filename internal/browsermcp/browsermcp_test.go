@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -165,7 +166,10 @@ func TestVisionBridgePassesLines(t *testing.T) {
 	if lines := strings.Split(strings.TrimSpace(out.String()), "\n"); len(lines) != 2 || !strings.Contains(out.String(), `"id":2`) {
 		t.Fatalf("out: %q", out.String())
 	}
-	if len(paths) != 3 || paths[0] != gateway.VisionMCPPath || paths[2] != gateway.VisionMCPPath || images[2] != filepath.Join(wd, "shots", "a.png") {
+	// the bridge passes messages side by side, so they reach the gateway
+	// in any order: the one image named is the call's
+	named := slices.DeleteFunc(slices.Clone(images), func(v string) bool { return v == "" })
+	if len(paths) != 3 || slices.ContainsFunc(paths, func(p string) bool { return p != gateway.VisionMCPPath }) || len(named) != 1 || named[0] != filepath.Join(wd, "shots", "a.png") {
 		t.Fatalf("paths %q, images %q", paths, images)
 	}
 
