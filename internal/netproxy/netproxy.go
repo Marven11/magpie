@@ -208,7 +208,8 @@ func (d *dispatch) RoundTrip(req *http.Request) (*http.Response, error) {
 // sends the request after it through the proxy in force; one a request
 // is still reading is left to finish. The first request sees no move.
 func (d *dispatch) globalMoved() bool {
-	now := strings.TrimSpace(settings.Load().Proxy)
+	// Shared, not Load: this runs on every request
+	now := strings.TrimSpace(settings.Shared().Proxy)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	moved := d.seenGlobal && d.global != now
