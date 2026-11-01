@@ -510,6 +510,10 @@ magpie.plugin("library", (ctx) => {
       take(v);
       if (glanced && tab !== "skills") return;
       if ((quiet === true || glanced) && seen(lib) === was) return;
+      // opening the page (its nav clicked, while on it too) draws it again
+      // only for a change, or for RTK's tab, which is asked again: a page
+      // drawn over again replaced the row under the reader's pointer (#3099)
+      if (quiet === "open" && seen(lib) === was && tab !== "rtk" && page.querySelector(":scope > .lib-body")) return;
       rtk = null; // asked again when its tab is drawn: an agent may have been installed since
       render();
     } catch (e) {
@@ -6197,7 +6201,7 @@ magpie.plugin("library", (ctx) => {
       document.addEventListener("visibilitychange", () => { if (!document.hidden) quietLoad(); });
       window.addEventListener("focus", quietLoad);
     },
-    open: () => (loading = load()),
+    open: () => (loading = load("open")),
     relang: () => load(),
     // one of the market's servers up close, from another page (Settings ›
     // Images' Magpie Image, #2091, Magpie Image Recognition, and Settings ›
