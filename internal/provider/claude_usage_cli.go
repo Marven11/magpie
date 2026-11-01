@@ -70,7 +70,33 @@ var errClaudeCannotRun = errors.New("Claude Code can't be run from here")
 
 // An account error stays visible even when it also mentions a timeout or
 // rate limit. It is not a temporary failure to read the usage endpoint.
-var claudeUsageDenied = regexp.MustCompile(`(?i)\b(401|403)\b|not (logged|signed) in|signed out|sign-in (has )?expired|unauthorized|forbidden|authentication (failed|required)|invalid (access )?token|(session|usage) limit|hit your limit|using your overages`)
+var claudeUsageDenied = regexp.MustCompile(`(?i)\b(401|403)\b|not (logged|signed) in|signed out|sign-in (has )?expired|unauthorized|forbidden|authentication (failed|required)|invalid (access )?token|(session|usage) limit|hit your limit`)
+
+// claudeOverages is /usage's line for an account past its plan's limits
+// and billed for what it uses ("You are currently using your overages to
+// power your Claude Code usage. We will automatically switch you back to
+// your subscription rate limits when they reset"), which Claude Code
+// prints above the account's windows. It is no account error: read as
+// one, the reading had no windows and an error, and the switch, which
+// stays on an account it can't read, left Claude Code spending overages
+// with other accounts that had room (StringKe, #4532).
+var claudeOverages = regexp.MustCompile(`(?i)using your overages`)
+
+// claudeOveragesWindow is the window an account on overages is read with,
+// beside ws: spent (usedPast, roomLeft), so the switch moves Claude Code
+// off it as off one whose window is used up, and told as its text. It
+// ends when the last of ws's used-up windows renews, as Claude Code's
+// overages do; none named, at the next reading.
+func claudeOveragesWindow(ws []QuotaWindow) QuotaWindow {
+	// the GUI says a Text row used 100 "In use" in the reader's language
+	w := QuotaWindow{Name: "Extra usage", Used: 100, Display: "In use", Text: true}
+	for _, x := range ws {
+		if x.Used >= 100 && x.ResetsAt != nil && (w.ResetsAt == nil || x.ResetsAt.After(*w.ResetsAt)) {
+			w.ResetsAt = x.ResetsAt
+		}
+	}
+	return w
+}
 
 // parseClaudeUsage reads /usage's windows; now dates a reset that names no
 // year.
@@ -108,6 +134,9 @@ func parseClaudeUsage(text string, now time.Time) ([]QuotaWindow, error) {
 			w.ResetsAt = &t
 		}
 		out = append(out, w)
+	}
+	if slices.ContainsFunc(lines, claudeOverages.MatchString) {
+		out = append(out, claudeOveragesWindow(out))
 	}
 	if len(out) == 0 {
 		if text == "" || slices.ContainsFunc(lines, func(line string) bool {

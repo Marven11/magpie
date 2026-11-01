@@ -14129,6 +14129,8 @@ function quotaFill(w) {
 function quotaText(w) {
   if (w.unlimited) return t("Unlimited");
   if (w.balance != null) return t("{n} left", { n: (countFormat.format(w.balance) + " " + t(w.unit || "")).trim() });
+  // a text row used 100 is Claude's overages (claudeOveragesWindow): "In use", said in the reader's language
+  if (w.text && w.used >= 100) return t("In use");
   if (quotaNoShare(w)) return w.display || t("No allowance reported");
   const used = to100(w.used);
   const n = quotaLeft ? 100 - used : used;
