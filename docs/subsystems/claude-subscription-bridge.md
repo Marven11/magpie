@@ -1023,7 +1023,11 @@ Discord: Claude Desktop on Fable 5.1 got
   earlier calls and that writing one calls nothing. A prompt with no call in
   it is told as before.
 - `readOutput` holds back a reply's words from the first line that opens
-  with `[tool call ` (`textCalls`); words before it, and lines that only
+  with `[tool call `, `<invoke name=` or `<function_calls>`
+  (`textCallOpens`, `textCalls`): the last two are Claude's own call
+  written out (packinggoodsllc_07668: Claude Code through a group of
+  Claude models was shown `<invoke name="ToolSearch">…` and a
+  `*Result: …*` the model made up). Words before it, and lines that only
   start like it, go on as they come. A reply that ends there with end_turn
   and calls none of the client's tools isn't ended: once its turn's
   `result` is in, the run is told `textCallsAsk` as a user message, and the
