@@ -218,3 +218,22 @@ func TestImageFromLeavesTheRest(t *testing.T) {
 		t.Fatalf("relative: %s", got)
 	}
 }
+
+// Behind magpie's MCP router this one process serves every agent, so a
+// call that names its caller's session in _meta goes on in that session,
+// each caller in a tab of its own; every other message, and a call with
+// no such session, goes in this process's own.
+func TestBridgeTakesTheRoutersCaller(t *testing.T) {
+	own := "stdio-abc"
+	for _, c := range []struct{ body, want string }{
+		{`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"browser_tabs","_meta":{"magpie/session":"hub-claude-1"}}}`, "hub:hub-claude-1"},
+		{`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"browser_tabs","_meta":{"magpie/session":" "}}}`, own},
+		{`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"browser_tabs"}}`, own},
+		{`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"magpie/session":"hub-claude-1"}}}`, own},
+		{`not json`, own},
+	} {
+		if got := callerSession([]byte(c.body), own); got != c.want {
+			t.Errorf("%s: %q, want %q", c.body, got, c.want)
+		}
+	}
+}

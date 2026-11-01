@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"maps"
 	"net/http"
@@ -53,9 +54,15 @@ type HubTool struct {
 // said are its, as file URIs (none for an agent on another machine, whose
 // folders aren't here), and its User-Agent's product, the name the
 // server's own requests go under.
+//
+// Session is which of the hub's callers the call is from (hubSession), for
+// a server that keeps something per caller: Magpie Browser's tab, which
+// two agents behind one router would otherwise share, the router running
+// one `magpie mcp browser` for all of them.
 type HubCaller struct {
-	Roots  []string
-	Client string
+	Roots   []string
+	Client  string
+	Session string
 }
 
 // The _meta keys a call of magpie's image server carries its caller in:
@@ -66,6 +73,10 @@ const (
 	HubRootsMeta  = "magpie/roots"
 	HubClientMeta = "magpie/client"
 	HubModelMeta  = "magpie/model"
+	// HubSessionMeta is the _meta key a call carries its caller's session
+	// in (HubCaller.Session), to Magpie Browser and to another magpie's
+	// router, which passes it on as its own caller's
+	HubSessionMeta = "magpie/session"
 )
 
 type hubCallerKey struct{}
@@ -221,9 +232,11 @@ func (s *Server) hubMCPCall(r *http.Request, agent string, m mcpMessage) (any, m
 		}
 		for _, t := range hubTools(r.Context(), agent) {
 			if t.name == p.Name {
+				c := HubCaller{Session: hubSession(r, agent, p.Meta)}
 				if t.Roots {
-					r = r.WithContext(WithHubCaller(r.Context(), HubCaller{Roots: hubRoots(r, p.Meta), Client: hubClient(r)}))
+					c.Roots, c.Client = hubRoots(r, p.Meta), hubClient(r)
 				}
+				r = r.WithContext(WithHubCaller(r.Context(), c))
 				return s.hubMCPRun(r, agent, t, p.Arguments), nil
 			}
 		}
@@ -280,10 +293,34 @@ func (s *Server) hubMCPRun(r *http.Request, agent string, t hubTool, args json.R
 // (the git repositories it works in, keyed by their folder).
 type hubCallMeta struct {
 	ThreadID string `json:"threadId"`
-	Turn     struct {
+	// Session is the caller's session as another magpie's router passed
+	// it on (HubSessionMeta)
+	Session string `json:"magpie/session"`
+	Turn    struct {
 		Workspaces map[string]json.RawMessage `json:"workspaces"`
 	} `json:"x-codex-turn-metadata"`
 }
+
+// hubSession is which caller of the hub r is: the session another
+// magpie's router names, which is its own caller's (that router reaches
+// this one on one connection for all of them), else the session this
+// client was given at initialize (serveMCP), else none, and the server
+// then keeps one thing for every caller, as before clients were told
+// apart. A caller can name any session, but each is only a tab of the
+// user's browser, which a caller can pick by its id anyway.
+func hubSession(r *http.Request, agent string, meta hubCallMeta) string {
+	if v := boundedSession(meta.Session); v != "" {
+		return v
+	}
+	if v := boundedSession(r.Header.Get("Mcp-Session-Id")); v != "" {
+		return "hub-" + agent + "-" + v
+	}
+	return ""
+}
+
+// newMCPSession is a session id for a client of one of magpie's MCP
+// servers.
+func newMCPSession() string { return "magpie-" + rand.Text() }
 
 // hubWhere is what the router says of itself to the agent of r, for an
 // agent given the same tools by two routers (one in China, one in Los

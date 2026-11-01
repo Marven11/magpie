@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -434,5 +435,48 @@ func TestHubMCPSaysWhere(t *testing.T) {
 	f.mu.Unlock()
 	if say, _, _ = whereReply(t, h, here); say != errHubOff {
 		t.Fatalf("off: %q", say)
+	}
+}
+
+// Each client that initializes is given a session id, and each call the
+// hub runs is made with its caller's session (HubCaller.Session), so a
+// server that keeps something per caller (Magpie Browser's tab) keeps it
+// apart for two agents behind one router: the session another magpie's
+// router names in _meta, which is its caller's, else the client's own; a
+// client that sends none is told apart from no one, as before.
+func TestHubMCPTellsCallersApart(t *testing.T) {
+	fresh(t)
+	var mu sync.Mutex
+	var got []string
+	f := &fakeHub{on: true, tools: map[string][]HubTool{
+		"claude": {{Server: "magpie-browser", Tool: "browser_tabs", Spec: hubSpec("browser_tabs")}},
+	}, call: func(ctx context.Context, server, tool string) (json.RawMessage, error) {
+		mu.Lock()
+		got = append(got, HubCallerOf(ctx).Session)
+		mu.Unlock()
+		return json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`), nil
+	}}
+	withHub(t, f)
+	h := lanGuard(New().Handler())
+
+	initialize := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`
+	a := hubPost(h, "claude", here, initialize).Header().Get("Mcp-Session-Id")
+	b := hubPost(h, "claude", here, initialize).Header().Get("Mcp-Session-Id")
+	if a == "" || b == "" || a == b {
+		t.Fatalf("sessions given at initialize: %q, %q", a, b)
+	}
+	if again := hubPost(h, "claude", here, initialize, "Mcp-Session-Id", a).Header().Get("Mcp-Session-Id"); again != "" {
+		t.Errorf("a client with a session was given another: %q", again)
+	}
+	call := toolsCall("magpie-browser__browser_tabs", `{}`)
+	hubPost(h, "claude", here, call, "Mcp-Session-Id", a)
+	hubPost(h, "claude", here, call, "Mcp-Session-Id", b)
+	hubPost(h, "claude", here, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"magpie-browser__browser_tabs","arguments":{},"_meta":{"magpie/session":"hub-claude-far"}}}`, "Mcp-Session-Id", a)
+	hubPost(h, "claude", here, call)
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"hub-claude-" + a, "hub-claude-" + b, "hub-claude-far", ""}
+	if !slices.Equal(got, want) {
+		t.Fatalf("callers %q, want %q", got, want)
 	}
 }
