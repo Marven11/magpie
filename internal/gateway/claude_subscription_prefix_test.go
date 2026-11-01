@@ -226,3 +226,33 @@ func TestClaudeToolChoiceNoneKeepsTheTools(t *testing.T) {
 		t.Errorf("a turn of tool_choice auto was not shown its call: %.800s", body)
 	}
 }
+
+// bbfatx on X: a title or summary a client asks of a conversation
+// between its turns, with tool_choice none or no tools, went to a run of
+// its own, told the conversation whole, and that run, carrying the
+// conversation on as retire took it, let go of the run the conversation
+// waited in. The conversation's next turn found no run and a new Claude
+// Code was told the whole conversation again, all of it written to the
+// cache once more. The run that waits for the next turn is left
+// waiting, and the next turn goes on in it.
+func TestClaudeAsideLeavesTheConversationsRun(t *testing.T) {
+	for _, c := range []struct{ name, extra string }{
+		{"tool_choice none", `"tools":` + prefixTools + `,"tool_choice":{"type":"none"},`},
+		{"no tools", ``},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newPrefixHarness(t)
+			tools := `"tools":` + prefixTools + `,`
+			first, _ := h.ask(tools, `[`+rmsg("user", "fix the bug")+`]`)
+			pid := answerPID(t, first)
+			conv := rmsg("user", "fix the bug") + `,` + rmsg("assistant", first)
+			if got, _ := h.ask(c.extra, `[`+conv+`,`+rmsg("user", "Write a short title for this conversation.")+`]`); answerPID(t, got) == pid {
+				t.Fatalf("the title went on in the conversation's run: %q", got)
+			}
+			next, _ := h.ask(tools, `[`+conv+`,`+rmsg("user", "and the tests")+`]`)
+			if answerPID(t, next) != pid || !strings.HasSuffix(next, " turn 2") {
+				t.Fatalf("the turn after the title was %q, want it in the conversation's run (pid %s), its second turn", next, pid)
+			}
+		})
+	}
+}

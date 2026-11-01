@@ -1436,7 +1436,7 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 		// the client sent the conversation back rewritten (#912): the
 		// run is its own when nothing else could be, and its agent was
 		// told every tool the client offers now
-		if r, _ := b.rewritten(req, owner); r != nil && r.offers(req.Tools) {
+		if r, _ := b.rewritten(req, owner); r != nil && r.offers(req.Tools) && !r.asideOf(req) {
 			run = r
 			log.Printf("claude: a conversation whose last turn the client rewrote goes on in its run")
 		}
@@ -1742,12 +1742,14 @@ func (r *subscriptionRun) setEffort(effort string) error {
 // conversation, which a new run now carries on: its turns since went to
 // another model (switched to and back), so none of them comes back to
 // those runs, each a Claude Code process kept idleLongest for nothing.
-func (b *subscriptionBridge) retire(owner string, msgs []Message) {
-	keys := conversationKeys(owner, msgs)
+// An aside carries a conversation of tools nothing on, and retires none
+// of its runs (aside).
+func (b *subscriptionBridge) retire(owner string, req *Request) {
+	keys := conversationKeys(owner, req.Messages)
 	var drop []*subscriptionRun
 	b.mu.Lock()
 	for key, run := range b.idle {
-		if run.owned() == owner && run.convKey != "" && slices.Contains(keys, run.convKey) {
+		if run.owned() == owner && run.convKey != "" && slices.Contains(keys, run.convKey) && !run.asideOf(req) {
 			delete(b.idle, key)
 			run.idleKey = ""
 			drop = append(drop, run)
@@ -1755,7 +1757,7 @@ func (b *subscriptionBridge) retire(owner string, msgs []Message) {
 	}
 	var gone []*savedSession
 	for key, s := range b.shelf {
-		if s.owner == owner && s.conv != "" && slices.Contains(keys, s.conv) {
+		if s.owner == owner && s.conv != "" && slices.Contains(keys, s.conv) && !(aside(req) && len(s.tools) > 0) {
 			delete(b.shelf, key)
 			gone = append(gone, s)
 		}
@@ -1767,6 +1769,29 @@ func (b *subscriptionBridge) retire(owner string, msgs []Message) {
 	for _, run := range drop {
 		run.abortFor("its conversation was told to a new one")
 	}
+}
+
+// aside says req may call none of the client's tools: a tool_choice of
+// none, or no tools.
+func aside(req *Request) bool {
+	return req.ToolChoice == "none" || len(req.Tools) == 0
+}
+
+// asideOf says req asks something of r's conversation that doesn't go on
+// with it: r was told tools, and req may call none, as a client asks a
+// title or a summary between a conversation's turns. It is not the
+// conversation's next turn. Retired, or taken as the conversation
+// rewritten (looseTurn has no tools), the run the conversation waited in
+// was gone or waited at the aside, so the next turn found no run, and a
+// new Claude Code was told the whole conversation, writing it to the
+// cache again (bbfatx on X).
+func (r *subscriptionRun) asideOf(req *Request) bool {
+	if !aside(req) {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.tools) > 0
 }
 
 // ended is told how a turn's reply went. A run whose reply was whole and
@@ -5170,7 +5195,7 @@ func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request,
 				log.Printf("claude: no run waits for this turn: %s", why)
 			}
 		}
-		s.subscription.retire(owner, req.Messages)
+		s.subscription.retire(owner, req)
 		if req.Effort == "" && autoModeClassifier(req) {
 			// Claude Code's auto mode classifier asks a verdict of a few
 			// words within a minute; a Claude Code run at its default
