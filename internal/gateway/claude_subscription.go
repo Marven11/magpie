@@ -154,6 +154,11 @@ type subscriptionRun struct {
 
 	// the tools its agent was told of, as it started and since
 	tools map[string]bool
+	// allowed is the client's tools its turn under way may call, nil for
+	// every one: none when the client chose none (tool_choice), its tools
+	// still offered, so Claude Code asks Anthropic the prefix the
+	// conversation's other turns cached (allowedTools). Under r.mu.
+	allowed map[string]bool
 	// names is the caller's name of each tool by the name the run's agent
 	// has it under (bridgeToolName), for those it differs: under r.mu
 	names map[string]string
@@ -977,6 +982,7 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	run.lean = req.leanPrompt
 	run.tui = tui
 	run.cachePrefix = prefix
+	run.allowed = allowedTools(req)
 	if user, _ := ownerAccount(owner); user != "" {
 		run.loginVersion = provider.ClaudeLoginVersion(user)
 	}
@@ -1494,6 +1500,7 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	run.segment = ch
 	run.active = time.Now()
 	run.turnUUID, run.backKey = turn, key
+	run.allowed = allowedTools(req)
 	run.mu.Unlock()
 	run.endIn(runTimeout)
 	// a turn the router picked another effort for (#502) goes on in the
@@ -2851,10 +2858,12 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 		r.mu.Lock()
 		name = declaredName(r.names, name)
 		search := r.search != nil && name == r.searchName
+		refused := r.allowed != nil && !r.allowed[name]
 		r.mu.Unlock()
 		// magpie answers its own web search, as Claude Code does
-		// its WebSearch
-		if !ok || search {
+		// its WebSearch, and a call of a tool the turn may not call
+		// (mcpCall): the client is never shown it
+		if !ok || search || refused {
 			own[index] = true
 			return "", false
 		}
@@ -4539,6 +4548,15 @@ func (b *subscriptionBridge) mcpCall(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, mcpToolResult{Content: []map[string]any{{"type": "text", "text": found}}})
 		return
 	}
+	run.mu.Lock()
+	refused := run.allowed != nil && !run.allowed[call.Name]
+	run.mu.Unlock()
+	if refused {
+		// the client chose no tool for this turn: the call is answered
+		// here, and Claude Code goes on to answer in words
+		writeJSON(w, 200, mcpToolResult{Content: []map[string]any{{"type": "text", "text": "No tool can be used for this reply. Answer without tools."}}, IsError: true})
+		return
+	}
 	waiter := make(chan mcpToolResult, 1)
 	run.mu.Lock()
 	if result, ok := run.early[call.ToolCallID]; ok {
@@ -5335,6 +5353,11 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 			run.mu.Unlock()
 		}
 		if err == nil {
+			// the turn may call what this request lets it: a client may
+			// choose none once it has its tools' results
+			run.mu.Lock()
+			run.allowed = allowedTools(req)
+			run.mu.Unlock()
 			events, err = run.continueWith(withTaskNotices(results, req.Messages), saidWithResults(req.Messages), more)
 		}
 		if err != nil {
@@ -5564,11 +5587,16 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 }
 
 // bridgeTools are the caller's tools as the MCP helper offers them, less
-// those tool_choice rules out.
+// those a named tool_choice rules out. A choice of none keeps them all:
+// Anthropic caches a prompt as its tools, then its system prompt, then
+// its messages, so a turn told none of them is a prefix the cache has
+// never seen, and was written to it whole, its tools and system prompt
+// too (bbfatx on X: a title or a summary asked with tool_choice none, of
+// a long conversation). The turn may call none of them (allowedTools).
 func bridgeTools(req *Request) []bridgeTool {
 	tools := make([]bridgeTool, 0, len(req.Tools))
 	for _, t := range req.Tools {
-		if req.ToolChoice == "none" || (strings.HasPrefix(req.ToolChoice, "name:") && t.Name != strings.TrimPrefix(req.ToolChoice, "name:")) {
+		if strings.HasPrefix(req.ToolChoice, "name:") && t.Name != strings.TrimPrefix(req.ToolChoice, "name:") {
 			continue
 		}
 		schema := t.Schema
@@ -5578,4 +5606,13 @@ func bridgeTools(req *Request) []bridgeTool {
 		tools = append(tools, bridgeTool{Name: bridgeToolName(t.Name), Description: t.Description, InputSchema: schema})
 	}
 	return tools
+}
+
+// allowedTools is the client's tools a turn of req may call, nil for all
+// it offers (subscriptionRun.allowed): none when it chose none.
+func allowedTools(req *Request) map[string]bool {
+	if req.ToolChoice == "none" {
+		return map[string]bool{}
+	}
+	return nil
 }
