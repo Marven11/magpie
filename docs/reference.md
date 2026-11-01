@@ -3034,8 +3034,14 @@ shows. So magpie finds its session with `rex ls --json` and runs
 `rex run -s <its ID> --label=<session or agent> -- /bin/sh -c '<command>; exec $SHELL -l'`,
 then names the new tab with `rex window rename`. With no such session (or one
 that ended since the list) it runs `rex new magpie --window=<session or agent> -- …`,
-whose first tab is so named. When Rex's server can't be reached (exit 4) it
-says to open Rex. The same applies to an agent's *Open in terminal* and a
+whose first tab is so named. A tab added from outside shows only in the
+app's sidebar, so magpie then brings Rex forward and asks the app to go to
+it: it takes the client of kind `app` from `rex client list --json` (the one
+attached to its session, else the last app connected) and runs
+`rex -C <client> do session.select session_id=<session> window_id=<tab>`.
+That needs *Remote Control* on in Rex's settings; with it off, with no app
+connected, or with no answer in 3 seconds, the tab stays open where it is.
+When Rex's server can't be reached (exit 4) it says to open Rex. The same applies to an agent's *Open in terminal* and a
 carried-over session (StringKe, #4565;
 [`terminal_rex.go`](../internal/gui/terminal_rex.go)).
 
