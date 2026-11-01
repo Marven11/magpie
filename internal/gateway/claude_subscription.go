@@ -292,7 +292,29 @@ type subscriptionRun struct {
 	// the client was told them: a client that names them by ids of its own
 	// (AmpCode) has its results paired with them by position (remap)
 	shown []shownCall
+
+	// lines is where in its session each call of the client's tools its
+	// replies made was written, by Claude Code's id for the call: a
+	// request that answers them after another did branches off the
+	// session there (branch). lineSeq counts the lines, and parkedSeq is
+	// lineSeq when it last parked. Under mu.
+	lines     map[string]callLine
+	lineSeq   int
+	parkedSeq int
 }
+
+// callLine is the session line of an assistant message block calling a
+// client's tool: its uuid, its place among the run's lines, and the
+// conversation the reply answered (historyKey), set as the run parks on
+// the calls.
+type callLine struct {
+	uuid string
+	seq  int
+	told string
+}
+
+// linesMost is how many call lines a run keeps (lines).
+const linesMost = 256
 
 // shownCall is one of a reply's calls of the client's tools, as the client
 // was told it: Claude Code's id for it, the tool and its arguments.
@@ -711,6 +733,7 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	var refused *cliSchemaRefused
 	if err != nil && from != nil && !errors.As(err, &full) && !errors.As(err, &refused) && ctx.Err() == nil {
 		log.Printf("claude: Claude Code could not go on from the conversation's saved session (%v); a new one is told the whole conversation", err)
+		req.branch = nil
 		return b.startRun(ctx, req, model, configDir, owner, nil)
 	}
 	return run, events, err
@@ -837,7 +860,10 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 			from = nil
 		}
 	}
-	if from != nil {
+	if from != nil && from.cut != "" {
+		log.Printf("claude: tool results another request answered first go on in a branch of their run's session, told from the results (%d messages)", len(from.since))
+		args = append(args, "--resume", from.session, "--fork-session", "--resume-session-at", from.cut)
+	} else if from != nil {
 		args = append(args, "--resume", from.session)
 	} else if hasReply(req.Messages) {
 		// no run had the conversation: this one is told it whole, in one
@@ -1006,9 +1032,10 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		run.abort()
 		return nil, nil, err
 	}
-	if from != nil {
+	if from != nil && from.cut == "" {
 		// the session is the run's now: its file goes when the run does,
-		// unless the run is shelved in turn
+		// unless the run is shelved in turn. A branch's is a copy of its
+		// own, named as Claude Code's init says.
 		from.taken()
 		run.mu.Lock()
 		run.sessionID = from.session
@@ -1102,6 +1129,7 @@ func claudePrint(req *Request, binary claudeCLI, prompt []map[string]any) (code,
 		{len(req.Format.schema()) > 0, "schema", "a JSON schema"},
 		{urlImages(req.Messages) > 0, "image", "an image known by its URL"},
 		{len(b) > tuiPromptMost, "big", "a first message over 400KB"},
+		{req.branch != nil, "branch", "a branch of another run's session"},
 	} {
 		if c.is {
 			return c.code, c.why
@@ -1876,6 +1904,10 @@ type savedSession struct {
 	at       time.Time       // since when it waits
 	timer    *time.Timer
 	since    []Message // the turn's messages, once unshelved
+	// cut, for a branch of a live run's session (branch), is the line it
+	// is cut after: Claude Code resumes a copy of it there, and the file
+	// stays the run's
+	cut string
 
 	cachePrefix cachePrefix
 
@@ -1954,6 +1986,113 @@ func (b *subscriptionBridge) unshelve(req *Request, owner string) *savedSession 
 	}
 	s.since = since
 	return s
+}
+
+// noteLines keeps where in the run's session a line calling the client's
+// tools ids was written: uuid, as Claude Code's output tells it. Claude
+// Code's own lines (<synthetic>) are no reply's.
+func (r *subscriptionRun) noteLines(uuid, model string, ids []string) {
+	if uuid == "" || model == "<synthetic>" || len(ids) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.lines == nil {
+		r.lines = map[string]callLine{}
+	}
+	r.lineSeq++
+	for _, id := range ids {
+		r.lines[id] = callLine{uuid: uuid, seq: r.lineSeq}
+	}
+	if len(r.lines) > linesMost {
+		for id, l := range r.lines {
+			if l.seq <= r.lineSeq-linesMost/2 {
+				delete(r.lines, id)
+			}
+		}
+	}
+}
+
+// branch is where a request's conversation goes on from a run's session
+// when no run takes its tool results: another request answered the calls
+// first, and the run went on with that one. Claude Code's fork sub-agents
+// start from their lead's conversation as it stands, a result for each of
+// its calls and their directive after, so the lead's next turn and every
+// fork it started answer the same calls at once (2b5f19fc7); a client may
+// also send a turn again while the first is answered. Each but one used to
+// be told the whole conversation by a new Claude Code, in one message, a
+// prefix the cache has never seen: Aisiverto on X saw two requests 100ms
+// apart, one reading 900K from the cache and the other writing 877K to it,
+// a fifth of a Pro plan's five hours each. The run's session, cut after
+// the reply that made the calls (--resume-session-at, --fork-session for a
+// copy, as the run still has it), is the conversation as Claude Code asked
+// it of Anthropic, whose cache has it: the request's own run reads it and
+// is told only the results and what came after, as a turn after an
+// unshelve is. nil when the run is gone, the conversation before the reply
+// isn't the one it answered, or the run can't be resumed so: a client's
+// own cache marks, Claude Code in WSL (no session on disk), a session
+// taken back since (rewound), or runs that must be the interactive mode,
+// as the branch is -p.
+func (b *subscriptionBridge) branch(req *Request, owner string) *savedSession {
+	if req.clientCache != nil || claudeTUIOnly() {
+		return nil
+	}
+	msgs := req.Messages
+	i := len(msgs)
+	for i > 0 && msgs[i-1].Role != "assistant" {
+		i--
+	}
+	if i == 0 || i == len(msgs) {
+		return nil
+	}
+	k := i
+	for k > 0 && msgs[k-1].Role == "assistant" {
+		k--
+	}
+	var calls []string
+	for _, m := range msgs[k:i] {
+		for _, p := range m.Parts {
+			if p.Kind == ToolCall {
+				calls = append(calls, p.ID)
+			}
+		}
+	}
+	if len(calls) == 0 {
+		return nil
+	}
+	b.mu.Lock()
+	runs := make([]*subscriptionRun, 0, len(b.runs))
+	for _, run := range b.runs {
+		runs = append(runs, run)
+	}
+	b.mu.Unlock()
+	told := ""
+	for _, run := range runs {
+		if run.owned() != owner {
+			continue
+		}
+		run.mu.Lock()
+		at, seq, said := "", 0, ""
+		for _, id := range calls {
+			if l, ok := run.lines[id]; ok && l.seq > seq {
+				at, seq, said = l.uuid, l.seq, l.told
+			}
+		}
+		sid, sessions := run.sessionID, slices.Clone(run.sessions)
+		usable := !run.closed && !run.rewound && run.lean == req.leanPrompt && !run.clientMarks
+		run.mu.Unlock()
+		if at == "" {
+			continue
+		}
+		if told == "" {
+			told = historyKey(msgs[:k])
+		}
+		if !usable || sid == "" || len(sessions) == 0 || said != told {
+			return nil
+		}
+		return &savedSession{session: sid, sessions: sessions, owner: owner, at: time.Now(), since: msgs[i:], cut: at, gone: true}
+	}
+	return nil
 }
 
 // saved says its session's file is still there.
@@ -2239,6 +2378,14 @@ func (r *subscriptionRun) park() {
 	}
 	now := time.Now()
 	r.parkedAt = now
+	// the calls just made answer the conversation the run last heard
+	for id, l := range r.lines {
+		if l.seq > r.parkedSeq && l.told == "" {
+			l.told = r.told
+			r.lines[id] = l
+		}
+	}
+	r.parkedSeq = r.lineSeq
 	r.mu.Unlock()
 	switch {
 	case r.timer == nil:
@@ -2795,8 +2942,10 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			CommandUUID string `json:"command_uuid"`
 			State       string `json:"state"`
 			// an assistant message, one of its blocks at a time; raw, as
-			// a user message's content may be a string
+			// a user message's content may be a string. UUID is its line's
+			// in the session (lines).
 			Message json.RawMessage `json:"message"`
+			UUID    string          `json:"uuid"`
 			Event   struct {
 				Type    string `json:"type"`
 				Index   int    `json:"index"`
@@ -2846,6 +2995,13 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 		}
 		if envelope.Type == "assistant" {
 			_ = json.Unmarshal(envelope.Message, &whole)
+			var ids []string
+			for _, c := range whole.Content {
+				if c.Type == "tool_use" && strings.HasPrefix(c.Name, "mcp__magpie__") && c.ID != "" {
+					ids = append(ids, c.ID)
+				}
+			}
+			r.noteLines(envelope.UUID, whole.Model, ids)
 		}
 		// a message not streamed is told by its id: a streamed one's
 		// whole messages come after its stream's events, under its id;
@@ -4918,8 +5074,12 @@ func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request,
 		if run, events := s.subscription.resume(req, owner); run != nil {
 			return run, events, nil
 		}
-		// a run let go past idleMost left its session for this turn
+		// a run let go past idleMost left its session for this turn, or
+		// the run whose calls another request answered first has it
 		from := s.subscription.unshelve(req, owner)
+		if from == nil {
+			from = req.branch
+		}
 		if from == nil {
 			if why := s.subscription.whyNoRun(req, owner); why != "" {
 				log.Printf("claude: no run waits for this turn: %s", why)
@@ -5124,6 +5284,9 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 			how += ": " + why
 		}
 		log.Printf("%s on %s: tool results %s", name, model, how)
+	}
+	if run == nil && name == "Claude Code" {
+		req.branch = s.subscription.branch(req, owner)
 	}
 	if run == nil {
 		run, events, err = start(r.Context(), req)

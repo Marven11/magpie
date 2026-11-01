@@ -243,7 +243,10 @@ A run is `-p`, as before, when (`claudeTUI`):
 - the request has safeguards, client cache marks, a JSON schema, an image
   known only by its URL (`urlImages`: the helper pastes files, and has no
   bytes of it), or words over 400KB (`tuiPromptMost`, images not counted),
-  which a paste can't carry as `-p` does.
+  which a paste can't carry as `-p` does;
+- it is a branch of another run's session (`branch`: see
+  [Tool results another request answers first](#tool-results-another-request-answers-first)),
+  which the helper can't resume, as it takes `--resume` as its own session.
 
 The gateway's log says which (`claude: this run is -p: …`,
 `claudePrintWhy`), and the helper's own line when it becomes `-p` (below)
@@ -904,6 +907,32 @@ others, and one whose run has ended, is a conversation of its own from
 there and gets a run started anew (`answeredElsewhere` in the log). It is
 never refused: Claude Code doesn't retry a 409, and the agent that sent it
 stops (ylorn on Discord).
+
+Such a run doesn't start from the whole conversation (`branch`). Told in
+one message, the conversation is a prefix the cache has never seen, so a
+900K conversation was written to the cache again for each fork. Aisiverto
+on X saw two requests 100ms apart: one read 900K and the other wrote 877K.
+Each cost about a fifth of a Pro plan's five hours. The run that made the
+calls instead keeps where in its session each call of the client's tools
+was written: the uuid on Claude Code's `assistant` line (`noteLines`). As
+it parks on them, it also keeps the conversation those calls answered
+(`historyKey`, set in `park`). A request no run takes, whose last reply's
+calls a live run of the same owner made, from the same conversation, goes
+on in a branch of that run's session. It is a `-p` run (`branch` in
+`claudePrint`) with `--resume <session> --fork-session
+--resume-session-at <uuid>`. That is a copy of the session cut after the
+reply, as Claude Code asked it of Anthropic, so it reads the lead's cache.
+It is told only the results and what came after, as a turn after an
+unshelve is. The lead's session file stays the lead's, and the branch's id
+comes from its own init. Claude Code 2.1.316 was checked on mote with the
+real binary: `--resume-session-at` cuts there even after the lead went on,
+and the copy works while the lead's process still holds the session.
+Calls it answered nothing for get a synthetic error result. There is no
+branch with a client's own cache marks, in interactive-only mode, from a
+run that was rewound, closed or has no session, or when the conversation
+before the reply isn't the one the run answered. Then, and when the resume
+fails, the run is told the whole conversation as before.
+`TestClaudeForkBranchesOffTheLeadsSession` holds it.
 
 ## The user's words beside tool results (#872, #1878)
 

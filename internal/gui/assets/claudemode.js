@@ -18,6 +18,7 @@ const CC_WHY = {
   schema: "the request asked for a JSON schema",
   image: "the request had an image by its URL",
   big: "its first message was over 400KB",
+  branch: "it branched off another request's conversation, which a sub-agent's first request does",
   wslread: "Windows can't read the transcripts of Claude Code in WSL",
 };
 const ccWhy = (code) => t(CC_WHY[code] || CC_WHY.os);
