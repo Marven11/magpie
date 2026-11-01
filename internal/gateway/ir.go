@@ -921,6 +921,10 @@ func budgetOf(effort string) int {
 	return 10000
 }
 
+// ThinkingBudget is the Anthropic thinking budget the gateway reads an
+// effort level as, for an agent's config that has to name one (ZCode's).
+func ThinkingBudget(effort string) int { return budgetOf(effortOf(effort)) }
+
 // effortOfBudget goes the other way, for Anthropic clients asking others.
 func effortOfBudget(n int) string {
 	switch {

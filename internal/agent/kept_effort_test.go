@@ -328,3 +328,49 @@ func TestMiniMaxKeepsTheUsersDefaultEffort(t *testing.T) {
 		t.Fatalf("after sync:\n%s", raw)
 	}
 }
+
+// ZCode's config.json: providerOptionsByLevel a user wrote for a level
+// (the workaround #3852's reporter could have had in place) stays through
+// a sync; the levels they left alone get magpie's.
+func TestZCodeKeepsTheUsersLevelOptions(t *testing.T) {
+	home := keptEffortHome(t)
+	path := filepath.Join(home, ".zcode", "v2", "config.json")
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	a := zcode(home)
+	if err := a.Field("provider").Set(magpieID); err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	b, _ := os.ReadFile(path)
+	json.Unmarshal(b, &doc)
+	r := doc["provider"].(map[string]any)[magpieID].(map[string]any)["models"].(map[string]any)["think/deep"].(map[string]any)["reasoning"].(map[string]any)
+	r["providerOptionsByLevel"] = map[string]any{"high": map[string]any{"thinking": map[string]any{"type": "adaptive"}}}
+	b, _ = json.Marshal(doc)
+	os.WriteFile(path, b, 0o644)
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	var c struct {
+		Provider map[string]struct {
+			Models map[string]struct {
+				Reasoning struct {
+					Options map[string]struct {
+						Thinking struct {
+							Type   string `json:"type"`
+							Budget int    `json:"budget_tokens"`
+						} `json:"thinking"`
+					} `json:"providerOptionsByLevel"`
+				}
+			}
+		}
+	}
+	b, _ = os.ReadFile(path)
+	json.Unmarshal(b, &c)
+	o := c.Provider[magpieID].Models["think/deep"].Reasoning.Options
+	if o["high"].Thinking.Type != "adaptive" || o["high"].Thinking.Budget != 0 {
+		t.Fatalf("the user's high level was written over: %s", b)
+	}
+	if o["low"].Thinking.Type != "enabled" || o["low"].Thinking.Budget != 4096 || o["disabled"].Thinking.Type != "disabled" {
+		t.Fatalf("the levels the user left alone: %s", b)
+	}
+}

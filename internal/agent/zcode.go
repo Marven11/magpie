@@ -26,7 +26,7 @@ import (
 //	  "enabled":true,"source":"custom",
 //	  "models":{"<id>":{"name":…,"limit":{"context":…,"output":…},"modalities":{…},
 //	    "reasoning":{"enabled":true,"levels":[…],"defaultLevel":…,
-//	      "providerOptionsByLevel":{"<level>":{"thinking":{"type":"enabled"}}}}}}}}}
+//	      "providerOptionsByLevel":{"<level>":{"thinking":{"type":"enabled","budget_tokens":…}}}}}}}}}
 //
 // An anthropic provider is asked at baseURL + /v1/messages. The model is
 // picked per task in ZCode's own picker and kept in its window, not in a
@@ -130,7 +130,7 @@ func zcode(home string) *Agent {
 // turned off in ZCode stays off. A sync (keep) leaves an address on another
 // machine as it found it (zcodeAddress).
 func zcodeProviderJSON(path string, keep bool) any {
-	was := zcodeDefaultLevels(path)
+	was, own := zcodeDefaultLevels(path), zcodeLevelOptions(path)
 	ms := map[string]any{}
 	for _, m := range sharedModels("zcode") {
 		window := m.Context
@@ -151,7 +151,7 @@ func zcodeProviderJSON(path string, keep bool) any {
 		if levels := zcodeLevels(m.Efforts); levels != nil {
 			e["reasoning"] = map[string]any{"enabled": true, "levels": levels,
 				"defaultLevel":           keptEffort(was[m.ID], levels, zcodeDefaultLevel(levels)),
-				"providerOptionsByLevel": zcodeOptionsByLevel(levels)}
+				"providerOptionsByLevel": zcodeOptionsByLevel(levels, own[m.ID])}
 		}
 		ms[m.ID] = e
 	}
@@ -354,14 +354,48 @@ func zcodeLevels(efforts []string) []string {
 // model's reasoning levels: thinking off for the level named "disabled",
 // on for every other (#3852 — with no provider options for a level ZCode
 // asks the model without thinking, and an always-thinking model refuses).
-func zcodeOptionsByLevel(levels []string) map[string]any {
+// Thinking on carries the level's budget, as Anthropic's Messages API asks
+// of a Claude before 4.6 (budget_tokens is required with "enabled"); the
+// gateway makes it adaptive for a later Claude and fits it under the
+// reply's limit. A level's options already in config.json are the user's
+// and stay: no magpie before #3852 wrote any.
+func zcodeOptionsByLevel(levels []string, own map[string]any) map[string]any {
 	out := map[string]any{}
 	for _, l := range levels {
-		t := "enabled"
-		if l == "disabled" {
-			t = "disabled"
+		if o, ok := own[l]; ok {
+			out[l] = o
+			continue
 		}
-		out[l] = map[string]any{"thinking": map[string]any{"type": t}}
+		th := map[string]any{"type": "disabled"}
+		if l != "disabled" {
+			th = map[string]any{"type": "enabled", "budget_tokens": gateway.ThinkingBudget(l)}
+		}
+		out[l] = map[string]any{"thinking": th}
+	}
+	return out
+}
+
+// zcodeLevelOptions are the providerOptionsByLevel each of magpie's models
+// has in config.json at path, which zcodeOptionsByLevel keeps.
+func zcodeLevelOptions(path string) map[string]map[string]any {
+	var c struct {
+		Provider map[string]struct {
+			Models map[string]struct {
+				Reasoning struct {
+					Options map[string]any `json:"providerOptionsByLevel"`
+				} `json:"reasoning"`
+			} `json:"models"`
+		} `json:"provider"`
+	}
+	b, _ := edit.Read(path)
+	if json.Unmarshal(b, &c) != nil {
+		return nil
+	}
+	out := map[string]map[string]any{}
+	for id, m := range c.Provider[magpieID].Models {
+		if len(m.Reasoning.Options) > 0 {
+			out[id] = m.Reasoning.Options
+		}
 	}
 	return out
 }
