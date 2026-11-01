@@ -4054,7 +4054,8 @@ body.panel .modal { padding: 16px 12px; }
   body.web #ledgerPane .sess-tools > .sess-filter { flex: 1 1 50%; width: auto; min-width: 0; }
   body.web #ledgerPane .sess-tools > #ledExport { order: 2; padding: 8px 2px 8px 6px; }
   body.web #ledgerPane .sess-tools .segs .opt { height: 28px; }
-  body.web .sess-tools > .segs { align-self: center; }
+  /* a 32px choice among 44px fields shares their middle, as the row's own align-items says */
+  body.web :is(.sess-tools, .prefs .val) > .segs { align-self: center; }
   body.web #view-usage input.sess-filter { min-height: 0; height: 36px; padding: 0 11px; border-radius: 9px; }
   /* a picker is drawn as tall as a choice of options beside it and taken
      at 44 the same way, by its own ::after */
