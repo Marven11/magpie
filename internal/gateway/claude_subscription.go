@@ -222,6 +222,10 @@ type subscriptionRun struct {
 	// found none (#1638).
 	behindKey  string
 	behindTurn string
+	// behindLine is the session line the conversation at behindKey ends
+	// at: the interactive mode, which can't be taken back, is branched
+	// off its session there (resume)
+	behindLine string
 	// endWhy is why magpie ended it, as the log of a turn that finds it
 	// gone says (abortFor); results are the calls whose results it was
 	// last handed (continueWith)
@@ -310,6 +314,11 @@ type subscriptionRun struct {
 	lines     map[string]callLine
 	lineSeq   int
 	parkedSeq int
+	// lastLine is the session line of the reply it wrote last, and
+	// backLine lastLine as the turn it was resumed for began: the
+	// conversation at backKey ends there. Under mu.
+	lastLine string
+	backLine string
 }
 
 // callLine is the session line of an assistant message block calling a
@@ -1437,14 +1446,14 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	}
 	b.mu.Lock()
 	run := b.idle[key]
-	back := "" // the turn the run is taken back from first
+	back, at := "", "" // the turn the run is taken back from first, and the line before it
 	if run == nil {
 		// the run went on with a turn this one doesn't follow: Claude
 		// Code's side question, asked as the conversation so far and a
 		// message more (#1638). It goes back to before that turn.
 		for _, r := range b.idle {
 			if r.behindKey == key && r.behindTurn != "" {
-				run, back = r, r.behindTurn
+				run, back, at = r, r.behindTurn, r.behindLine
 				break
 			}
 		}
@@ -1461,13 +1470,21 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	if run != nil {
 		delete(b.idle, run.idleKey)
 		run.idleKey = ""
-		run.behindKey, run.behindTurn = "", ""
+		run.behindKey, run.behindTurn, run.behindLine = "", "", ""
 	}
 	b.mu.Unlock()
 	if run == nil {
 		return nil, nil
 	}
 	req.clientCache.selected(false)
+	if run.tui && back != "" && urlImages(since) == 0 {
+		// the interactive mode can't be taken back: a run of its own goes
+		// on from a copy of the session cut before the side question, as
+		// a branch does, told only the turn. Let go, a new Claude Code was
+		// told the whole conversation each turn Claude Code asked its
+		// prompt suggestion after (bbfatx on X).
+		req.branch = run.branchAt(at, owner, since)
+	}
 	if run.tui && (back != "" || urlImages(since) > 0) {
 		// the interactive mode can't be taken back, nor pasted an image
 		// it has no bytes of
@@ -1516,7 +1533,7 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	ch := make(chan Event, 64)
 	run.segment = ch
 	run.active = time.Now()
-	run.turnUUID, run.backKey = turn, key
+	run.turnUUID, run.backKey, run.backLine = turn, key, run.lastLine
 	run.allowed = allowedTools(req)
 	run.mu.Unlock()
 	run.endIn(runTimeout)
@@ -1823,9 +1840,9 @@ func (r *subscriptionRun) ended(req *Request, said, stop string, ok bool) {
 	// the client's next request, its results sent again or the next turn,
 	// found no run and a new one was told the whole conversation.
 	r.mu.Lock()
-	turn, back := r.turnUUID, r.backKey
+	turn, back, backLine := r.turnUUID, r.backKey, r.backLine
 	if !ok || stop != "tool" {
-		r.turnUUID, r.backKey = "", ""
+		r.turnUUID, r.backKey, r.backLine = "", "", ""
 	}
 	r.mu.Unlock()
 	switch {
@@ -1866,7 +1883,7 @@ func (r *subscriptionRun) ended(req *Request, said, stop string, ok bool) {
 	// the conversation before this turn, when the run was resumed for
 	// it: a side question Claude Code asked of it is taken back from
 	// there when the conversation's own next turn comes (resume)
-	r.behindKey, r.behindTurn = back, turn
+	r.behindKey, r.behindTurn, r.behindLine = back, turn, backLine
 	r.bridge.mu.Unlock()
 	if why, over := r.oversized(2); over {
 		r.bridge.letGoOversized(r, key, conv, why)
@@ -2060,11 +2077,15 @@ func (b *subscriptionBridge) unshelve(req *Request, owner string) *savedSession 
 // tools ids was written: uuid, as Claude Code's output tells it. Claude
 // Code's own lines (<synthetic>) are no reply's.
 func (r *subscriptionRun) noteLines(uuid, model string, ids []string) {
-	if uuid == "" || model == "<synthetic>" || len(ids) == 0 {
+	if uuid == "" || model == "<synthetic>" {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.lastLine = uuid
+	if len(ids) == 0 {
+		return
+	}
 	if r.lines == nil {
 		r.lines = map[string]callLine{}
 	}
@@ -2161,6 +2182,26 @@ func (b *subscriptionBridge) branch(req *Request, owner string) *savedSession {
 		return &savedSession{session: sid, sessions: sessions, owner: owner, at: time.Now(), since: msgs[i:], cut: at, tui: run.tui, gone: true}
 	}
 	return nil
+}
+
+// branchAt is a branch of the run's session cut after its line at, for a
+// turn of its conversation told since: the copy is made now, before the
+// run is let go with its file, and is the branch's own. nil when there is
+// no line or session, or the copy can't be made.
+func (r *subscriptionRun) branchAt(at, owner string, since []Message) *savedSession {
+	r.mu.Lock()
+	sid, sessions, marks := r.sessionID, slices.Clone(r.sessions), r.clientMarks
+	r.mu.Unlock()
+	if at == "" || sid == "" || len(sessions) == 0 || marks {
+		return nil
+	}
+	cut, err := cutSession(sessions, sid, at)
+	if err != nil {
+		log.Printf("claude: the interactive run's session couldn't be cut before its side question (%v)", err)
+		return nil
+	}
+	log.Printf("claude: the conversation's next turn goes on in a branch of its interactive run's session, cut before the side question it answered since")
+	return &savedSession{session: cut, sessions: sessions, owner: owner, at: time.Now(), since: since, tui: true}
 }
 
 // cutWait is how long cutSession waits for the line it cuts after to be

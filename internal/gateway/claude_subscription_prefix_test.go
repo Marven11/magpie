@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yetone/magpie/internal/claudetui"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/testenv"
 )
@@ -288,5 +289,60 @@ func TestClaudeCutSessionCopiesAsFarAsTheLine(t *testing.T) {
 		if id, err := cutSession(dirs, "S", at); err == nil {
 			t.Errorf("cut at %s: %s, want an error", at, id)
 		}
+	}
+}
+
+// interactive makes the harness's runs Claude Code's interactive mode:
+// its helper is a stand-in that runs the stand-in Claude Code as asked.
+func (h *prefixHarness) interactive() {
+	h.t.Helper()
+	claudeTUIRuns = true
+	h.t.Cleanup(func() { claudeTUIRuns = false })
+	helper := filepath.Join(h.t.TempDir(), "magpie")
+	testenv.Program(h.t, helper, `#!/bin/sh
+[ "$1" = "`+claudetui.Command+`" ] || exit 9
+shift; claude=$1; shift
+exec "$claude" "$@"
+`)
+	claudeTUIHelper = helper
+	h.t.Cleanup(func() { claudeTUIHelper = "" })
+}
+
+// Claude Code asks its prompt suggestion after each turn as the
+// conversation and one message more, and its run goes on with it (#1638).
+// A -p run is taken back from it when the conversation's next turn comes;
+// the interactive mode can't be, and was let go, so a new Claude Code was
+// told the whole conversation every turn, all of it written to the cache
+// again (bbfatx on X). The turn goes on from a copy of the run's session
+// cut before the suggestion, in the interactive mode, told only the turn.
+func TestClaudeInteractiveSideQuestionBranchesBeforeIt(t *testing.T) {
+	h := newPrefixHarness(t)
+	h.interactive()
+	tools := `"tools":` + prefixTools + `,`
+	first, _ := h.ask(tools, `[`+rmsg("user", "fix the bug")+`]`)
+	pid := answerPID(t, first)
+	conv := rmsg("user", "fix the bug") + `,` + rmsg("assistant", first) + `,` + rmsg("user", "and the tests")
+	second, _ := h.ask(tools, `[`+conv+`]`)
+	if second != "pid "+pid+" had 0 turn 2" {
+		t.Fatalf("second: %q", second)
+	}
+	conv += `,` + rmsg("assistant", second)
+	if got, _ := h.ask(tools, `[`+conv+`,`+rmsg("user", suggestionMode)+`]`); got != "pid "+pid+" had 0 turn 3" {
+		t.Fatalf("the suggestion: %q", got)
+	}
+	third, _ := h.ask(tools, `[`+conv+`,`+rmsg("user", "now commit it")+`]`)
+	branch := answerPID(t, third)
+	// its session's two turns, the suggestion's left out
+	if branch == pid || third != "pid "+branch+" had 4 turn 1" {
+		t.Fatalf("the turn after the suggestion: %q (the conversation's run was %s)\n%s", third, pid, h.log(branch))
+	}
+	log := h.log(branch)
+	if told := log[strings.Index(log, "\ntold "):]; strings.Contains(told, "fix the bug") || strings.Contains(told, "SUGGESTION") || !strings.Contains(told, "now commit it") {
+		t.Fatalf("the branch was told %.600s, want the new turn only", told)
+	}
+	// and the conversation goes on in it
+	conv += `,` + rmsg("user", "now commit it") + `,` + rmsg("assistant", third)
+	if got, _ := h.ask(tools, `[`+conv+`,`+rmsg("user", "push it")+`]`); got != "pid "+branch+" had 4 turn 2" {
+		t.Fatalf("the turn after: %q", got)
 	}
 }
