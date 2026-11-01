@@ -473,6 +473,7 @@ func (s *shim) input(r io.Reader) error {
 			Message struct {
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
+			Command string `json:"command"`
 		}
 		if json.Unmarshal(sc.Bytes(), &m) != nil {
 			continue
@@ -485,6 +486,10 @@ func (s *shim) input(r io.Reader) error {
 					"error": "Claude Code's interactive mode takes no " + m.Request.Subtype + " request"}
 			}
 			s.emit(map[string]any{"type": "control_response", "response": resp})
+		case "command":
+			if err := s.command(m.Command); err != nil {
+				return err
+			}
 		case "user":
 			pieces, err := s.userPieces(m.Message.Content)
 			if err != nil {
@@ -503,6 +508,109 @@ func (s *shim) input(r io.Reader) error {
 		}
 	}
 	return sc.Err()
+}
+
+// how long a command's panel may take to be drawn, and how long it stays
+// as it is before it is taken as drawn whole
+var (
+	commandWait   = 20 * time.Second
+	commandSettle = time.Second
+)
+
+// command runs /usage, which Claude Code answers itself, asking no model:
+// it is typed, and what Claude Code shows for it is told as the result -p's
+// /usage gives (usageText), its local_command named. The panel is closed
+// after. It is the one command a line {"type":"command"} runs: the plan's
+// allowance read in the interactive mode, where -p's /usage tells no
+// window of it (Claude Code 2.1.316).
+func (s *shim) command(name string) error {
+	if name != "/usage" {
+		s.emit(map[string]any{"type": "result", "subtype": "error_during_execution", "is_error": true, "session_id": s.sid,
+			"result": "the helper types no " + name + " in Claude Code's interactive mode"})
+		return nil
+	}
+	for _, c := range name {
+		if _, err := io.WriteString(s.pty, string(c)); err != nil {
+			return err
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// the command menu drawn as it was typed settles, and is left out of
+	// what is read
+	time.Sleep(commandSettle)
+	s.clearScreen()
+	if _, err := io.WriteString(s.pty, "\r"); err != nil {
+		return err
+	}
+	by := time.After(commandWait)
+	last, quiet := "", time.Now()
+	for waiting := true; waiting; {
+		p := s.plain()
+		if p != last {
+			last, quiet = p, time.Now()
+		}
+		// drawn: its windows, and the panel still a moment; or anything
+		// else (an error, a plan with no allowance) still for longer
+		still := time.Since(quiet)
+		if strings.TrimSpace(p) != "" && (usageUsed.MatchString(p) && still >= commandSettle || still >= 3*commandSettle) {
+			break
+		}
+		select {
+		case <-s.changed:
+		case <-time.After(100 * time.Millisecond):
+		case <-by:
+			waiting = false
+		case <-s.exited:
+			return fmt.Errorf("Claude Code ended (%v): %s", s.exit, s.lastScreen())
+		}
+	}
+	_, _ = io.WriteString(s.pty, "\x1b")
+	s.emit(map[string]any{"type": "result", "subtype": "success", "is_error": false, "session_id": s.sid,
+		"local_command": "usage", "result": usageText(last)})
+	return nil
+}
+
+var (
+	usageName  = regexp.MustCompile(`^(session|week(?: \([^)]*\))?)`)
+	usageUsed  = regexp.MustCompile(`([0-9.]+)%\s+used`)
+	usageReset = regexp.MustCompile(`Resets (.*?\))`)
+)
+
+// usageText is the plan's allowance as /usage's panel shows it, each
+// window a bar ("Current session ███▌ 99% used", then "Resets 7pm
+// (Asia/Shanghai)" below), said as -p's lines say it: "Current session:
+// 99% used · resets 7pm (Asia/Shanghai)", a window drawn again told as
+// drawn last. Overages are said as /usage says them. A panel with no
+// window is told as drawn, for its words to say why.
+func usageText(screen string) string {
+	t := strings.Join(strings.Fields(screen), " ")
+	var names []string
+	said := map[string]string{}
+	for _, chunk := range strings.Split(t, "Current ")[1:] {
+		name, used := usageName.FindString(chunk), usageUsed.FindStringSubmatch(chunk)
+		if name == "" || used == nil {
+			continue
+		}
+		line := "Current " + name + ": " + used[1] + "% used"
+		if r := usageReset.FindStringSubmatch(chunk[strings.Index(chunk, used[0]):]); r != nil {
+			line += " · resets " + r[1]
+		}
+		if _, ok := said[name]; !ok {
+			names = append(names, name)
+		}
+		said[name] = line
+	}
+	var lines []string
+	for _, n := range names {
+		lines = append(lines, said[n])
+	}
+	if strings.Contains(t, "using your overages") {
+		lines = append(lines, "You are currently using your overages to power your Claude Code usage.")
+	}
+	if len(lines) == 0 {
+		return t
+	}
+	return strings.Join(lines, "\n")
 }
 
 // piece is a part of a user message as it is pasted: words, or the path

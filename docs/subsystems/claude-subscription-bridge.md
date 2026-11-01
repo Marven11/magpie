@@ -344,8 +344,15 @@ The gateway's log says which (`claude: not the interactive mode: …`).
 A refused request never ran, so it isn't the editor's last request
 (`noteClaudeRun`). The model test's and warm-up's "hi" (`askClaude`) goes
 through the helper too (`askClaudeTUI`), in stream-json, and its stdin is
-closed at the first result. Reading the plan's allowance (`/usage`) asks
-no model and is still `claude -p /usage`.
+closed at the first result. Reading the plan's allowance (`/usage`,
+`claudeUsageTUI`) types `/usage` in the interactive mode too: the helper
+is told `{"type":"command","command":"/usage"}`, types it, waits for the
+panel's windows ("NN% used", `commandSettle` still) and closes it with
+Esc. Its result (`local_command: "usage"`) says each window as -p's lines
+do, "Current session: 99% used · resets 7pm (Asia/Shanghai)" (`usageText`,
+tested on the bytes Claude Code 2.1.316 drew, `testdata/usage-2.1.316.bin`),
+for `provider.parseClaudeUsage`. Claude Code 2.1.316's `-p /usage`
+printed only the session's cost there, no window, in a real run.
 
 The Claude Code provider editor's "Claude Code runs as" row
 (`claudeModeRow` in app.js, drawn by claudemode.js, which it loads with

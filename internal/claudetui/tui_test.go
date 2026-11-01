@@ -214,6 +214,12 @@ func fakeClaude(args []string) {
 			}
 			_, _ = fmt.Fprintf(tapped, `{"s":%d,"end":"done"}`+"\n", n)
 		}
+		if line == "/usage" {
+			// its panel, as Claude Code 2.1.316 drew it
+			b, _ := os.ReadFile(os.Getenv("FAKE_USAGE"))
+			_, _ = os.Stdout.Write(b)
+			continue
+		}
 		f, _ := os.OpenFile(filepath.Join(dir, sid+".jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		rows := []any{
 			map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": line}},
@@ -258,6 +264,11 @@ func runShim(t *testing.T, env []string, pargs []string, lines []string, want in
 	})
 	t.Setenv("MAGPIE_TUI_TEST_CFG", cfg)
 	for _, l := range lines {
+		// a line after "raw:" is said as it is
+		if raw, ok := strings.CutPrefix(l, "raw:"); ok {
+			_, _ = io.WriteString(stdin, raw+"\n")
+			continue
+		}
 		// a line that is JSON is the message's content blocks
 		var content any = l
 		if json.Valid([]byte(l)) {
@@ -625,6 +636,51 @@ func TestShimInWSL(t *testing.T) {
 	}
 	if want := []string{"WSLENV=CLAUDE_CONFIG_DIR/p:TERM:BUN_OPTIONS:" + tapEnv, "BUN_OPTIONS=--preload /mnt/c/t/tap.js", tapEnv + "=/mnt/c/t/tap.jsonl"}; !slices.Equal(bun, want) {
 		t.Fatalf("env %q, want %q", bun, want)
+	}
+}
+
+// /usage is typed, and the windows its panel shows are told as -p's
+// /usage lines say them, in a result naming its local command; the
+// panel is the bytes Claude Code 2.1.316 drew, a bar, then "81%", then
+// "used", each placed by a move of the cursor.
+func TestShimReadsUsage(t *testing.T) {
+	panel, _ := filepath.Abs(filepath.Join("testdata", "usage-2.1.316.bin"))
+	out := runShim(t, []string{"FAKE_USAGE=" + panel}, append([]string{fakePath(t)}, pArgs...), []string{`raw:{"type":"command","command":"/usage"}`}, 2)
+	want := "Current session: 0% used · resets 12am (Asia/Shanghai)\nCurrent week (all models): 81% used · resets Nov 4 at 6am (Asia/Shanghai)"
+	if r := out[1]; r["type"] != "result" || r["is_error"] != false || r["local_command"] != "usage" || r["result"] != want {
+		t.Fatalf("told %v", r)
+	}
+}
+
+// A command other than /usage is told as an error, and none is typed.
+func TestShimRunsNoOtherCommand(t *testing.T) {
+	out := runShim(t, nil, append([]string{fakePath(t)}, pArgs...), []string{`raw:{"type":"command","command":"/login"}`}, 2)
+	if r := out[1]; r["type"] != "result" || r["is_error"] != true || !strings.Contains(r["result"].(string), "/login") {
+		t.Fatalf("told %v", r)
+	}
+}
+
+func TestUsageText(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "usage-2.1.316.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Current session: 0% used · resets 12am (Asia/Shanghai)\nCurrent week (all models): 81% used · resets Nov 4 at 6am (Asia/Shanghai)"
+	if got := usageText(ansi.ReplaceAllString(string(b), " ")); got != want {
+		t.Fatalf("usageText = %q, want %q", got, want)
+	}
+	for screen, want := range map[string]string{
+		// a window drawn again is told as drawn last, the Sonnet week its own
+		"Current session ██ 10% used Resets 7pm (Asia/Shanghai) Current session ███ 12% used Resets 7pm (Asia/Shanghai) Current week (Sonnet only) █ 4% used Resets Nov 4 at 6am (UTC)": "Current session: 12% used · resets 7pm (Asia/Shanghai)\nCurrent week (Sonnet only): 4% used · resets Nov 4 at 6am (UTC)",
+		// with no reset drawn
+		"Current session  0% used": "Current session: 0% used",
+		"Current session ████ 100% used Resets 7pm (UTC) You are using your overages": "Current session: 100% used · resets 7pm (UTC)\nYou are currently using your overages to power your Claude Code usage.",
+		// no window: told as drawn, for its words to say why
+		"Settings  Usage   /usage is only available for subscription plans.": "Settings Usage /usage is only available for subscription plans.",
+	} {
+		if got := usageText(screen); got != want {
+			t.Errorf("usageText(%q) = %q, want %q", screen, got, want)
+		}
 	}
 }
 
