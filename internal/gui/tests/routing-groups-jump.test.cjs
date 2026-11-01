@@ -65,10 +65,10 @@ function serve(lang, web) {
 // Under the whole suite's load webkit en once waited past the 5s default
 // for the head button's fit (#3478): the page sizes the button a frame
 // after the head's layout, and a loaded machine serves those first frames
-// late, the fit with them. The waits that span the page's boot (the goto,
-// the rows it fills, the head and the fit it gets in the first frames) get
-// 15s; the ones inside a loaded page (the click's jump and its settle)
-// keep the quick 5s.
+// late, the fit with them. The waits that span the page's boot (the rows
+// it fills, the head and the fit it gets in the first frames) get 15s;
+// the goto keeps the minute every page's load has (#4470), and the waits
+// inside a loaded page (the click's jump and its settle) the quick 5s.
 const boot = 15000;
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -90,7 +90,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const errors = [];
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, web));
-        await page.goto("http://magpie.test/?view=routing", { timeout: boot });
+        await page.goto("http://magpie.test/?view=routing");
         await page.locator(".rt-group", { hasText: "Model M" }).waitFor({ state: "attached", timeout: boot });
         await page.locator(".rt-reqs > *").first().waitFor({ state: "attached", timeout: boot });
 
