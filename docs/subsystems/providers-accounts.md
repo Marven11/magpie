@@ -339,6 +339,23 @@ and `TestHistoricalWindowHoldsUsesEachWindowsOwnReading`.
   the bridge's turns hold the restart back, so the two don't overlap there.
   `TestCodexRefreshWaitsForAnotherMagpie`,
   `TestChatGPTAPIRefreshWaitsForAnotherMagpie`.
+- A switch of Claude Code's sign-in (`switchSavedLogin`) and a sign-in
+  that may write it (`addLogin`) take Claude Code's own refresh locks
+  first ([claude_lock.go](../../internal/provider/claude_lock.go)), as
+  Claude Code 2.1.316 takes them: the directory
+  `<config dir>/.oauth_refresh.lock`, then `<realpath(config dir)>.lock`
+  (`~/.claude.lock`), each made with mkdir, touched while held and taken
+  over once untouched for 60s. Rewriting `~/.claude.json`'s
+  `oauthAccount` (`putClaudeLogin`) takes `<that file>.lock` (10s stale)
+  after them, the order Claude Code saves it in. A switch read during a
+  refresh kept the outgoing account with the refresh token that refresh
+  spent, so it was signed out of magpie on its next use (#4532). A lock
+  held past 20s fails the switch with nothing written (`errClaudeLocked`).
+  magpie writes no `.oauth_refresh.lock.owner`, so Claude Code waits out a
+  lock magpie left only by its stale time. Other `~/.claude.json` writers
+  (the Library's MCP servers) don't take the lock yet (#4747).
+  `TestClaudeSwitchWaitsForClaudeCodesRefresh`,
+  `TestClaudeSwitchStaleAndHeldLocks`.
 
 ## Verification
 
