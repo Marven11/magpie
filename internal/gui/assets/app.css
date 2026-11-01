@@ -4388,6 +4388,9 @@ body.window .row.agent.gone > .ag-conn { margin-left: auto; }
 /* 「接入」 in the window: a row says whether the agent goes through magpie —
    a line under its name, a link that opens it, its switch */
 .ag-lead { margin: 0 2px 12px; font-size: 12.5px; color: var(--fg-2); }
+/* a magpie of another version serving the gateway (plugins/gateway gatewaySkewLine) */
+.gw-skew { margin: 0 0 12px; }
+.gw-skew .gw-skew-err { color: var(--fg-2); }
 .ag-lead b { font-weight: 600; color: var(--fg); }
 .ag-lead.welcome { margin: 0 0 12px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
 .ag-lead .ag-lead-h { display: block; font-size: 14px; margin-bottom: 4px; }

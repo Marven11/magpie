@@ -356,6 +356,41 @@ func ServedBy() Served {
 	return Served{Running: true, Window: info.Window, Version: info.Version, Pid: info.Pid, Serves: info.Serves}
 }
 
+// ServedBusy is what the magpie serving the gateway has in flight, as its
+// /v1/magpie/concurrency tells it: agent requests (those waiting for a
+// slot among them) and Claude Code turns waiting on their caller's tools.
+// ok is false when it doesn't say (a magpie from before 3b6ca0557, a
+// refusal, no answer in time): unknown, which is never idle.
+func ServedBusy() (n int, ok bool) {
+	c := &http.Client{Timeout: 700 * time.Millisecond}
+	res, err := c.Get(URL() + "/v1/magpie/concurrency")
+	if err != nil {
+		return 0, false
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return 0, false
+	}
+	b, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		return 0, false
+	}
+	var out struct {
+		Object   string `json:"object"`
+		Requests *int   `json:"requests"`
+		Waiting  *int   `json:"waiting"`
+		Tools    *int   `json:"tools"`
+	}
+	if decodeJSON(b, &out) != nil || out.Object != "concurrency" || out.Requests == nil || out.Tools == nil {
+		return 0, false
+	}
+	n = *out.Requests + *out.Tools
+	if out.Waiting != nil && *out.Waiting > *out.Requests {
+		n += *out.Waiting - *out.Requests
+	}
+	return n, true
+}
+
 // Taken reports whether anything accepts connections at the gateway's
 // address, whether or not it answers ServedBy's question in time: a
 // magpie busy starting, or slow on a small server, still holds the port.

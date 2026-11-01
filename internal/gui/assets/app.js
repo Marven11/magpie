@@ -457,6 +457,7 @@ function renderAgents() {
   list.replaceChildren();
   homeAgentPrefRows(); // an opened row's, back in the page (ysm119)
   agentsLead(list);
+  self.gatewaySkewLine?.(list);
   if (!state.agents.length) {
     const e = el("div", "empty-state");
     e.append(el("b", "", t("No agents found")), el("span", "", t("Install Claude Code, Codex, Gemini CLI, OpenCode… and magpie will list them here.")));

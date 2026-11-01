@@ -317,6 +317,9 @@ type stateJSON struct {
 	// started card's first step ("add a model source") is done once
 	// there is one, agents found or not
 	Served int `json:"served"`
+	// GatewayOther is a magpie of another version serving the gateway in
+	// this one's place, which the Agents page says (gateway_older.go)
+	GatewayOther *gatewaySkew `json:"gatewayOther,omitempty"`
 }
 
 // unlistedJSON is a model of a provider kept for routing groups, and the
@@ -2783,6 +2786,9 @@ func state() stateJSON {
 	s.Unlisted = unlistedModels()
 	s.CLIBehind = cliBehind()
 	s.ConfigBlocked = configBlocked()
+	if served.Load() == nil {
+		s.GatewayOther = gatewayOther.Load()
+	}
 	for _, e := range provider.Served() {
 		if e.Group == "" {
 			s.Served++
