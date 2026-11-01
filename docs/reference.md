@@ -782,10 +782,12 @@ The list is the models the shared magpie shows Codex (its Agents page
 picks), each as the `model_catalog_json` magpie writes for a Codex on its
 own computer describes it, and only the models the key may use. Codex 0.161
 reads it by default; 0.160 needs `[features] api_key_model_discovery = true`.
-Codex reads at most 1 MiB of a catalog, and every entry carries Codex's
-prompt, so past about 125 models the list keeps the first that fit and the
-answer's `X-Magpie-Left-Out` header says how many it left out: pick fewer
-for Codex, or hold the key to fewer.
+Codex before 0.166 reads at most 1 MiB of a catalog, and every entry
+carries the instructions official Codex sends its model (about 21 KB), so
+for such a Codex past about 48 models the list keeps the first that fit and
+the answer's `X-Magpie-Left-Out` header says how many it left out: update
+Codex, pick fewer for Codex, or hold the key to fewer. Codex 0.166 and later
+read the list whole (magpie knows it by the `client_version` Codex sends).
 
 A request that reaches loopback through a proxy or tunnel on this computer
 (Cloudflare Tunnel's `cloudflared`, ngrok, Tailscale serve or funnel, frp's
