@@ -1144,12 +1144,14 @@ func restLast(out []candidate, pl planned) ([]candidate, planned) {
 // busyOf is the load c's plugin last reported for its model, and whether
 // that is over the percent over (settings.BusyLoad; 0 is off). A model
 // with no load reported, or none within plugin.LoadFresh, isn't busy:
-// unknown is never taken for idle nor for busy.
+// unknown is never taken for idle nor for busy. The plugin reports it by
+// its own id of the model, so a model the user lists by another is looked
+// up by that (axelburks on Discord).
 func busyOf(c candidate, over int, now time.Time) (float64, bool) {
 	if over <= 0 {
 		return 0, false
 	}
-	load, _, ok := plugin.ModelLoad(c.p.PluginProvider(), c.model, now)
+	load, _, ok := plugin.ModelLoad(c.p.PluginProvider(), c.p.OwnModelID(c.model), now)
 	return load, ok && load > float64(over)
 }
 
