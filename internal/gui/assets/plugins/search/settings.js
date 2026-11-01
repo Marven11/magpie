@@ -186,31 +186,7 @@ function renderSearch(s, keep) {
   // As Images' Magpie Image (#2091), the row says how to get there from
   // where the reader is: gateway mode has no Library, and the Library can
   // be turned off
-  if (!gatewayMode) {
-    const libOff = featuresOff.has("library");
-    const go = el("button", "link search-mcp-lib", libOff ? t("Turn on the Library") : t("Give agents Magpie Web Search…"));
-    go.type = "button";
-    go.onclick = async () => {
-      if (!libOff) {
-        if (await show("library") !== false) magpie.call("library", "server", "magpie-web-search");
-        return;
-      }
-      go.disabled = true;
-      try {
-        const next = await api("plugins/builtin", { id: "library", on: true });
-        if (state.settings) state.settings.builtins = next;
-        applyFeatures(next);
-        status(t("The Library is on"), "ok", 1500);
-        renderSettings();
-      } catch (err) {
-        go.disabled = false;
-        status(t(err.message), "err");
-      }
-    };
-    const line = el("div", "sub search-mcp-how");
-    line.append(go);
-    mcp.querySelector(".who").append(line);
-  }
+  mcp.querySelector(".who").append(...libWay("magpie-web-search", t("Give agents Magpie Web Search…"), "search-mcp-lib"));
 }
 
 // searchArrange: the search APIs are asked in the order they are listed,

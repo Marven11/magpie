@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -114,5 +116,105 @@ func TestSearchBridgePassesLines(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"id":7`) || !strings.Contains(out.String(), "Magpie Web Search can't be reached") {
 		t.Fatalf("gateway gone: %q", out.String())
+	}
+}
+
+// magpie mcp vision relays each line to the gateway's image recognition
+// server, a relative image path made the agent's folder's on the way
+// (the gateway can't know where the agent runs), and says so by id when
+// the gateway can't be reached (matrix0487 on Discord).
+func TestVisionBridgePassesLines(t *testing.T) {
+	var mu sync.Mutex
+	var paths, images []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+gateway.Token {
+			http.Error(w, "wrong", 400)
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		var m struct {
+			ID     json.RawMessage
+			Method string
+			Params struct {
+				Arguments struct{ Image string }
+			}
+		}
+		json.Unmarshal(b, &m)
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		images = append(images, m.Params.Arguments.Image)
+		mu.Unlock()
+		if len(m.ID) == 0 {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": map[string]any{"method": m.Method}})
+	}))
+	defer srv.Close()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}` + "\n" +
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n" +
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"analyze_image","arguments":{"image":"shots/a.png","prompt":"what"}}}` + "\n")
+	var out bytes.Buffer
+	if err := serveVision(in, &out, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Split(strings.TrimSpace(out.String()), "\n"); len(lines) != 2 || !strings.Contains(out.String(), `"id":2`) {
+		t.Fatalf("out: %q", out.String())
+	}
+	if len(paths) != 3 || paths[0] != gateway.VisionMCPPath || paths[2] != gateway.VisionMCPPath || images[2] != filepath.Join(wd, "shots", "a.png") {
+		t.Fatalf("paths %q, images %q", paths, images)
+	}
+
+	out.Reset()
+	srv.Close()
+	if err := serveVision(strings.NewReader(`{"jsonrpc":"2.0","id":7,"method":"tools/list"}`+"\n"), &out, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"id":7`) || !strings.Contains(out.String(), "Magpie Image Recognition can't be reached") {
+		t.Fatalf("gateway gone: %q", out.String())
+	}
+	if err := RunVision([]string{"extra"}); err == nil {
+		t.Fatal("an argument was taken")
+	}
+}
+
+// Only analyze_image's relative path is made the folder's: an absolute
+// path, the home's, a URL, a drive, another tool and another method go as
+// written, byte for byte.
+func TestImageFromLeavesTheRest(t *testing.T) {
+	wd := filepath.Join(string(filepath.Separator)+"work", "proj")
+	call := func(name, image string) string {
+		return `{"jsonrpc":"2.0","id":"x-1","method":"tools/call","params":{"name":"` + name + `","arguments":{"image":"` + image + `"}}}`
+	}
+	abs := filepath.Join(wd, "abs.png")
+	absJSON, _ := json.Marshal(abs)
+	for _, line := range []string{
+		`{"jsonrpc":"2.0","id":"x-1","method":"tools/call","params":{"name":"analyze_image","arguments":{"image":` + string(absJSON) + `}}}`,
+		call("analyze_image", "~/a.png"),
+		call("analyze_image", "https://example.com/a.png"),
+		call("analyze_image", "data:image/png;base64,aGVsbG8="),
+		call("analyze_image", "file:///a.png"),
+		call("analyze_image", "C:/shots/a.png"),
+		call("generate_image", "a.png"),
+		`{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{"image":"a.png"}}`,
+		`not json`,
+	} {
+		if got := string(imageFrom([]byte(line), wd)); got != line {
+			t.Errorf("%s\n became %s", line, got)
+		}
+	}
+	got := imageFrom([]byte(call("analyze_image", "a.png")), wd)
+	var m struct {
+		ID     string
+		Params struct {
+			Arguments struct{ Image string }
+		}
+	}
+	if err := json.Unmarshal(got, &m); err != nil || m.ID != "x-1" || m.Params.Arguments.Image != filepath.Join(wd, "a.png") {
+		t.Fatalf("relative: %s", got)
 	}
 }

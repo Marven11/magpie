@@ -372,13 +372,14 @@ func (o ordered) MarshalYAML() (any, error) {
 
 // selfTimeout is the seconds an agent waits for a tool of s: what
 // magpie-image's video tool needs, at least two minutes for
-// magpie-browser's and magpie-web-search's, else def.
+// magpie-browser's, magpie-web-search's and magpie-vision's, else def.
 func selfTimeout(s *Server, def int) int {
 	if s.Name == selfServerName && s.Command != "" {
 		return int(imagemcp.ToolTimeout().Seconds())
 	}
-	if s.Name == searchServerName && s.Command != "" {
-		// a search a searcher model answers, or a slow page, takes a while
+	if (s.Name == searchServerName || s.Name == visionServerName) && s.Command != "" {
+		// a search a searcher model answers, a slow page, or a look at a
+		// big image takes a while
 		return max(def, 120)
 	}
 	if s.Name == browserServerName && s.Command != "" {

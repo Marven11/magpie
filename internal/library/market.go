@@ -61,8 +61,12 @@ type MarketServer struct {
 	SignIn   bool `json:"signIn,omitempty"`
 	Featured bool `json:"featured,omitempty"`
 	// OptIn is one no agent is given unless it is picked for it
-	OptIn  bool    `json:"optIn,omitempty"`
-	Inputs []Input `json:"inputs"`
+	OptIn bool `json:"optIn,omitempty"`
+	// Unready is why one of magpie's own can't answer yet (nothing it
+	// needs is set up, or Settings turned it off), from the GUI, which
+	// knows: its tools still answer, with the same words
+	Unready string  `json:"unready,omitempty"`
+	Inputs  []Input `json:"inputs"`
 	// Have is the library's server that is this one
 	Have string `json:"have,omitempty"`
 	// Match is one found at the address searched for: its repository, page,
@@ -94,6 +98,7 @@ var featured = []MarketServer{
 	selfServer(),
 	browserServer(),
 	searchServer(),
+	visionServer(),
 	remoteServer("context7", "Context7", "Upstash", gh("upstash"), "https://mcp.context7.com/mcp",
 		"Up-to-date documentation and code examples for any library, straight into the prompt.", false,
 		Input{Key: "CONTEXT7_API_KEY", Where: "header", Label: "API key", Description: "Optional — raises the rate limit. From context7.com/dashboard", Secret: true, format: "{}"}),
@@ -209,6 +214,26 @@ func searchServer() MarketServer {
 	return m
 }
 
+// visionServerName is the name Magpie Image Recognition's server is
+// written under, the name the gateway's own image recognition server goes
+// by (ownMCP).
+const visionServerName = "magpie-vision"
+
+// visionServer is Magpie Image Recognition: magpie's image recognition
+// (Settings › Models › Images › Image recognition) as an analyze_image
+// tool, through `magpie mcp vision`, which passes each call to the
+// gateway's VisionMCPPath. Settings named it by its address only, and the
+// Library had image generation and search but not it (matrix0487 on
+// Discord, #4653). A look costs what the model that sees charges, and
+// most agents' models see for themselves, so it is given only to the
+// agents picked for it.
+func visionServer() MarketServer {
+	m := localServer(visionServerName, "Magpie Image Recognition", "Magpie", "https://usemagpie.ai/favicon.png", "https://usemagpie.ai",
+		"Read an image (a file, a URL, a screenshot) with the image recognition model set in Magpie (Settings → Models → Images), for a model that can't see.", magpieCommand, []string{"mcp", "vision"})
+	m.OptIn = true
+	return m
+}
+
 // selfCommand is the server's command and env for this magpie: its binary
 // by full path, and the gateway's address when it isn't the default one.
 func selfCommand(s *Server) {
@@ -319,7 +344,7 @@ func serverKey(s *Server) string {
 	if s.Remote() {
 		return strings.TrimSuffix(strings.ToLower(s.URL), "/")
 	}
-	if len(s.Args) == 2 && s.Args[0] == "mcp" && (s.Args[1] == "image" || s.Args[1] == "browser" || s.Args[1] == "search") {
+	if len(s.Args) == 2 && s.Args[0] == "mcp" && (s.Args[1] == "image" || s.Args[1] == "browser" || s.Args[1] == "search" || s.Args[1] == "vision") {
 		return "magpie mcp " + s.Args[1] // magpie's own, wherever its binary is
 	}
 	for _, a := range s.Args {

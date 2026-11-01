@@ -21426,6 +21426,7 @@ function renderImages(s, keep) {
   // a custom provider's model nothing says takes images isn't offered: say
   // where it is marked, by the editor's own words (nexnull on Discord)
   const notMarked = s.visionNotMarked || [];
+  if (v !== "off") who.append(...libWay("magpie-vision", t("Give agents Magpie Image Recognition…"), "vision-mcp-lib"));
   if (notMarked.length && v !== "off") who.append(el("div", "sub vision-not-marked", t("Models of {providers} aren’t listed until marked in their provider’s {names} › {images}",
     { providers: notMarked.join(", "), names: t("Names & levels"), images: t("Accepts images") })));
   b.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "vision", label: "model", value: v, options: [
@@ -21453,6 +21454,35 @@ function renderImages(s, keep) {
   mcpRow("imageMcpRow", "/mcp/magpie/image", t("Image generation MCP server"), t("Agents can add image generation as an MCP server (Streamable HTTP) with generate_image, generate_video and generation_result tools, which draw with the Image generation model. An image comes back in the answer and at a URL kept for an hour, a video at a URL; nothing is saved in the agent's project. From another computer, send a gateway key as Authorization: Bearer <key>."));
 }
 
+// libWay: a row's way to give agents magpie's own server name in the
+// Library, or to turn it on; none in gateway mode (#2091, matrix0487)
+function libWay(name, label, cls) {
+  if (gatewayMode) return [];
+  const libOff = featuresOff.has("library");
+  const go = el("button", "link " + cls, libOff ? t("Turn on the Library") : label);
+  go.type = "button";
+  go.onclick = async () => {
+    if (!libOff) {
+      if (await show("library") !== false) magpie.call("library", "server", name);
+      return;
+    }
+    go.disabled = true;
+    try {
+      const next = await api("plugins/builtin", { id: "library", on: true });
+      if (state.settings) state.settings.builtins = next;
+      applyFeatures(next);
+      status(t("The Library is on"), "ok", 1500);
+      renderSettings();
+    } catch (err) {
+      go.disabled = false;
+      status(t(err.message), "err");
+    }
+  };
+  const line = el("div", "sub lib-way");
+  line.append(go);
+  return [line];
+}
+
 // renderImageGen: the model magpie's generate_image tool draws with — the
 // one magpie picks, one named, or none — and where agents are given the tool.
 function renderImageGen(s, keep, box) {
@@ -21469,10 +21499,7 @@ function renderImageGen(s, keep, box) {
   const r = el("div", "row pref");
   r.id = "imageGenRow";
   const who = el("div", "who");
-  // An agent draws once it has the Magpie Image tool, which the Library
-  // gives it. The Library can be switched off (Essentials leaves it off)
-  // and gateway mode has none, so the row says how to get there from
-  // where the reader is, and takes them (#2091, nailuoGG)
+  // the Library gives agents the tool, and can be off (#2091, nailuoGG)
   const libOff = featuresOff.has("library");
   const sub = el("div", "sub wraps",
     v === "off" ? t("Agents given Magpie Image can't generate images or videos: the tool says it is off")
@@ -21480,30 +21507,7 @@ function renderImageGen(s, keep, box) {
     : libOff ? t("The model Magpie Image draws with. Agents get the Magpie Image tool from the Library, which is turned off in Plugins › Built-in; images are saved in their project")
     : t("The model Magpie Image draws with. Agents get the Magpie Image tool from the Library; images are saved in their project"));
   who.append(el("div", "name", t("Image generation")), sub);
-  if (v !== "off" && !gatewayMode) {
-    const go = el("button", "link image-gen-tool", libOff ? t("Turn on the Library") : t("Give agents Magpie Image…"));
-    go.type = "button";
-    go.onclick = async () => {
-      if (!libOff) {
-        if (await show("library") !== false) magpie.call("library", "server", "magpie-image");
-        return;
-      }
-      go.disabled = true;
-      try {
-        const next = await api("plugins/builtin", { id: "library", on: true });
-        if (state.settings) state.settings.builtins = next;
-        applyFeatures(next);
-        status(t("The Library is on"), "ok", 1500);
-        renderSettings();
-      } catch (err) {
-        go.disabled = false;
-        status(t(err.message), "err");
-      }
-    };
-    const line = el("div", "sub image-gen-how");
-    line.append(go);
-    who.append(line);
-  }
+  if (v !== "off") who.append(...libWay("magpie-image", t("Give agents Magpie Image…"), "image-gen-tool"));
   // ChatGPT's images backend picks the model itself, so its one entry says
   // so where it draws, picked or automatic (#1865)
   const draws = v === "off" || gone ? "" : v ? shown : s.imageGenAuto;

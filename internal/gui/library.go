@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/library"
 	"github.com/yetone/magpie/internal/mcpauth"
 )
@@ -161,6 +162,10 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 	// once asked for, which skills.sh gives one at a time
 	mux.HandleFunc("GET /api/library/market/servers", func(rw http.ResponseWriter, r *http.Request) {
 		list, err := library.MarketServers(r.URL.Query().Get("q"))
+		for i := range list {
+			// magpie's own that can't answer yet says why on its row
+			list[i].Unready = gateway.OwnUnready(list[i].ID)
+		}
 		m := marketOf(list, err)
 		m.Custom = library.CustomAt(r.URL.Query().Get("q"), list)
 		writeJSON(rw, m)

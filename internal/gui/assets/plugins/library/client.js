@@ -5851,6 +5851,7 @@ magpie.plugin("library", (ctx) => {
     const meta = el("div", "mk-meta");
     if (x.publisher) meta.append(el("span", "mk-pub", x.publisher));
     meta.append(el("span", "mk-badge", runsLabel(x)));
+    if (x.unready) { const u = el("span", "mk-badge mk-unready", t("Not set up yet")); u.title = t(x.unready); meta.append(u); }
     if (needsKey(x)) { const k = el("span", "mk-badge mk-needs"); k.append(svg(GLYPH.key, 11, 1.5)); k.title = t("Needs {what} to add", { what: x.inputs.filter((i) => i.required).map((i) => t(i.label)).join(", ") }); meta.append(k); }
     who.append(meta);
     top.append(logo(x.icon, x.title || x.name), who);
@@ -5897,7 +5898,12 @@ magpie.plugin("library", (ctx) => {
       ed.append(browserSetup());
     } else if (x.name === "magpie-web-search") {
       ed.append(el("p", "mk-hint", t("Pick the agents that may search with it: each search goes where Settings → Models → Web search sends it, and costs what that charges.")));
+    } else if (x.name === "magpie-vision") {
+      ed.append(el("p", "mk-hint", t("Pick the agents that may read images with it: each image goes to the Image recognition model set in Settings → Models → Images, and costs what that model charges.")));
     } else if (x.optIn) ed.append(el("p", "mk-hint", t("Pick the agents that may generate images: each image costs what the model set in Settings → Images charges.")));
+    // one of magpie's own that can't answer yet says why, and is added all
+    // the same: it answers once that is set up, its tools saying how
+    if (x.unready) ed.append(el("p", "mk-hint mk-unready", t(x.unready)));
     const firsts = [];
     for (const i of x.inputs || []) {
       const f = field2("", i.placeholder || (i.where === "env" ? i.key : ""), (v) => { values[i.key] = v.trim(); });
@@ -6107,7 +6113,8 @@ magpie.plugin("library", (ctx) => {
     open: () => (loading = load()),
     relang: () => load(),
     // one of the market's servers up close, from another page (Settings ›
-    // Images' Magpie Image, #2091, and Settings › Models' Magpie Web Search): its sheet over the MCP servers tab, to
+    // Images' Magpie Image, #2091, Magpie Image Recognition, and Settings ›
+    // Models' Magpie Web Search): its sheet over the MCP servers tab, to
     // pick the agents that get it; one already in the library is on that
     // tab's list, which opens with nothing over it
     server: async (name) => {
