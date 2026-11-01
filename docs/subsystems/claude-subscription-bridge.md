@@ -284,9 +284,31 @@ asked in turn (#4778: 15 tries across 3 accounts, some rested). Its
 words avoid "Models" just before the error's type: "Models ›
 Replies…\",\"type\":\"invalid_request_error" read as a model not served
 (`provider.ModelUnserved`), which made the 400 retryable again. That is
-when (`claudeTUI`, `claudePrint`):
+when (`claudeTUI`, `claudeMachineWhy`) this computer has no Claude Code
+path or isn't macOS, Linux or Windows. Nothing a request asks is refused
+any more (`claudePrint` keeps an image known by its URL, which
+`serveClaudeSubscription` has downloaded before any run, below).
 
-- the request has a JSON schema;
+A JSON schema is answered through an answer tool of magpie's
+(`claude_tui_schema.go`): interactive Claude Code takes `--json-schema`
+and does nothing with it (2.1.316, a real run: its result's
+`structured_output` is null), since its `StructuredOutput` tool is
+`-p`'s alone. `serveClaudeSubscription` compiles the schema
+(`compileAnswerSchema`: draft-07 unless it says otherwise, as `-p` reads
+one; a `$ref` outside itself is refused, never fetched) and adds the
+tool, `StructuredOutput` or a numbered name apart from the client's
+(`answerTool`), with the schema as its input schema, through the bridge's
+MCP server. `mcpCall` checks each call against the schema (`answer`): one
+that doesn't fit gets an `isError` result saying why, to be made again,
+as `-p`'s is; one that fits is kept (`answerArgs`). At the turn's result
+the kept input is the reply's `structured_output`; a turn that ended
+without one is told once to call the tool (`answerAsk`), and fails "no
+answer fitting the schema" when it still doesn't. Neither the call nor
+the words around it reach the client (`r.schema`). A real run (haiku,
+11-02) called `mcp__magpie__StructuredOutput` at once, with input that
+fit a `pattern`. A schema the compiler can't take is a 400 before any
+run (`TestClaudeTUISchemaAnswer`, `TestClaudeTUISchemaAskedOnce`,
+`TestAnswerTool`).
 
 A first message of any length is pasted: a conversation told whole to
 a new Claude Code (one older than its session, or a client's own) can
