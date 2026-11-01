@@ -2511,6 +2511,10 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		rw.WriteHeader(http.StatusNoContent)
 	})
+	// the agents a quit would cut off, for its question (quitask.go)
+	mux.HandleFunc("GET /api/quit", func(rw http.ResponseWriter, r *http.Request) {
+		writeJSON(rw, map[string]any{"agents": quitAgents()})
+	})
 	mux.HandleFunc("POST /api/window/{action}", func(rw http.ResponseWriter, r *http.Request) {
 		switch r.PathValue("action") {
 		case "hide":
@@ -2518,7 +2522,13 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		case "main":
 			w.ShowMain(mainView(r.URL.Query()))
 		case "quit":
-			w.Quit()
+			// the user's Quit asks first while agents are connected
+			// (quitask.go); the question's own Quit is now=1
+			if a, ok := w.(quitAsker); ok && r.URL.Query().Get("now") == "" {
+				go a.AskQuit()
+			} else {
+				w.Quit()
+			}
 		case "fit":
 			if h, g, ok := parseFit(r.URL.Query()); ok {
 				w.FitPanel(h, g)

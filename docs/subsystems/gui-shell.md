@@ -24,6 +24,7 @@ three.
 | The app's log | `runGUI` and `runPanel` (so `magpie`, `app`, `tray`, `panel`, a window view and a `magpie:` link) call `startLog` before `gui.Run`: `applog.Start` sends the standard logger, which the gateway, the plugin host and Wails' error handler write to, to `app.log` in `appdir.Logs` as well as stderr (`quiet`, which never fails, first, since io.MultiWriter stops at a failed writer and an app opened from Explorer has no stderr), and points `debug.SetCrashOutput` at it, so a panic is in it. Opened from the Finder, the Dock or the Start menu the app has no terminal, and wrote its log nowhere (rayem1w on X, 0.1.2330). The folder is `~/Library/Logs/magpie` on macOS (beside the launch agent's `serve.log`, which launchd writes for `magpie serve`: the two processes never share a file), `%LOCALAPPDATA%\magpie\logs` on Windows, `$XDG_STATE_HOME/magpie` (`~/.local/state/magpie`) elsewhere, and `logs` in a portable data folder. The file is 0600. At 5 MiB (`Limit`) it becomes `app.old.log`; when another magpie (an update's new process) rotated it already (`os.SameFile` of the open file and the path differs), it is only opened again, and when it can't be moved it is emptied. Each line goes through `scrub`, which masks bearer and basic credentials, key and token query parameters, and `sk-`, `AIza`, `gh?_` and JWT shapes, though nothing logged is meant to carry one. Settings › About's Log row (`#logRow`, `settingsJSON.Log` from `applog.Current`, so `magpie web`, which writes no file, shows none) has its path and an Open (`POST /api/settings/log/reveal`) that shows its folder; `magpie log` prints where every log is, `-n` the last lines, `-f` follows across a rotation (`TestTheAppWritesItsLog`, `TestLogFollows`). | [`internal/applog/applog.go`](../../internal/applog/applog.go), [`gui_on.go`](../../internal/cli/gui_on.go), [`log_cli.go`](../../internal/cli/log_cli.go) |
 | No GUI build | `-tags nogui` builds magpie without the GUI: `hasGUI` is false and `runGUI` says to use `magpie tui`. The files of `internal/gui` that need Wails build under `!nogui`. | [`gui_off.go`](../../internal/cli/gui_off.go) |
 | The terminal quitting | `magpie tui` that served the gateway with an agent connected hands the gateway on as it quits, on Linux where nothing opens magpie at login (a WSL distro, a server over SSH; zaidu259434 on X): `keepGateway` starts magpie's service when it is installed, installs it (`daemon.Install`) when the user never removed it (`daemon.Removed`, a mark `magpie daemon uninstall` leaves), and otherwise starts `magpie serve` in its own session (`serveInBackground`, log in magpie's cache). Elsewhere, with nothing connected, or where magpie opens at login, it only says the gateway stopped. | [`keep.go`](../../internal/tui/keep.go) |
+| The app quitting | A Quit the user chooses (the tray's Quit, the panel's and window's Quit, Command-Q on the Mac) while agents are connected to the gateway this process serves asks first (see [A Quit asks while agents go through magpie](#a-quit-asks-while-agents-go-through-magpie)). Closing the window only hides it: magpie stays in the menu bar or the system tray and the gateway keeps serving, on Windows too. | [`quitask.go`](../../internal/gui/quitask.go), [`quitask_app.go`](../../internal/gui/quitask_app.go), [`quitask.js`](../../internal/gui/assets/quitask.js) |
 
 ## Runtime path
 
@@ -580,6 +581,41 @@ never empty: `OwnerTrace` says so with its second result). See
 [`trace_peer_test.go`](../../internal/gui/trace_peer_test.go), and
 `TestGatewayTraceIsLoopbackOnly` in
 [`trace_peer_test.go`](../../internal/gateway/trace_peer_test.go).
+
+### A Quit asks while agents go through magpie
+
+Quitting magpie ends the gateway, and each agent wired to it fails until
+magpie runs again with nothing to say why: Codex retried "502 Bad Gateway"
+on `/backend-api/codex/responses` five times and gave up, and its user
+found magpie's `openai_base_url` in config.toml only after a long search
+(Aisiverto on X). So a Quit the user chooses asks first when
+`quitAgents` (`agent.Detected()` filtered by `Wired`) names any agent and
+this process serves the gateway (`served`; when another magpie serves it,
+that one keeps serving the agents and the Quit goes on).
+
+- The tray's Quit and the page's Quit (`POST /api/window/quit` without
+  `now`, on a host that is a `quitAsker`) call `AskQuit`. On the Mac,
+  `askingQuit` puts magpie's own Command-Q item in place of the app menu's
+  Quit role. `AskQuit` brings the window up on the question: it opens
+  `/?ask=quit` when the window is gone or loading, else runs
+  `window.askQuit()` in the loaded page.
+- `quitask.js` (lazy-loaded, so it adds nothing to the core) reads
+  `GET /api/quit` and draws the sheet: the agents, the sentence that they
+  stop while magpie is closed, a note that closing the window keeps magpie
+  running (the menu bar on a Mac, the system tray elsewhere), and Disconnect
+  and quit, Cancel, and Quit (focused). Quit posts `window/quit?now=1`.
+  Disconnect and quit disconnects each agent in turn, as its row's
+  Disconnect does, and a failure leaves magpie open, named in the status
+  line. With nothing connected any more it quits without drawing.
+- A second Quit within a minute of the question (`quitNow`, `quitAgain`)
+  quits, so a window that can't show the question doesn't trap the user.
+- Not asked: a restart to update, Uninstall, a browser's page (`magpie
+  web`), logging out or shutting down, and the Dock's Quit (AppKit's
+  `terminate:`).
+
+See `TestWindowQuitAsksFirst`, `TestQuitListsWiredAgents`,
+`TestQuitAPIListsAgents`, `TestQuitNow`, `TestCommandQAsksFirst` and
+`quit-ask.test.cjs`.
 
 ### A restart to update hands the gateway over
 

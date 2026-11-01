@@ -1066,18 +1066,12 @@ function profileDetail(p, footed) {
   return d;
 }
 
-// driftNote: under the name of an agent whose config something else
-// rewrote since magpie set it — the row still shows a magpie model while the
-// agent no longer reaches magpie, or it was put back on a model of its own —
-// what happened, and the one click that sets it again.
-// driftFix is the one thing a drifted agent shows: an amber pill after its
-// name that sets magpie's settings again. What is off is its tooltip; taking
-// the config as it is now is in the row's menu.
-// An agent whose config is right but whose address doesn't answer (#1013)
-// has nothing to set again: its pill says what has to listen there, unless
-// WSL now reaches Windows at another address, which it moves the config to.
-// Likewise one whose requests for magpie go through a proxy that doesn't
-// pass them on (proxied: Codex, Muma102kMichael on X).
+// driftFix: an amber pill after a drifted agent's name (its config was
+// rewritten since magpie set it) that sets magpie's settings again; what is
+// off is its tooltip. With the config right but its address not answering
+// (#1013), or its requests through a proxy that drops them (Codex,
+// Muma102kMichael on X), it says what must listen there, or moves a WSL
+// config to Windows' new address.
 function driftFix(a, label = "Apply again") {
   const d = a.drift, f = a.fields.find((x) => x.key === d.field);
   const want = (f && optionFor(f, d.want)?.label) || d.want;
@@ -18077,6 +18071,8 @@ async function askReset(q) {
   try { await import("./resetask.js"); } catch (err) { return statusErr(err); }
   askResetSheet(q);
 }
+// a Quit's question (quitask.js); unloaded, it quits
+window.askQuit = () => import("./quitask.js").then(() => askQuitSheet(), () => api("window/quit?now=1", {}));
 // closes a confirmation, nothing more (its Cancel, or an OK that only dismisses)
 function cancelAsk(e) { e.stopPropagation(); closeConfirmAsk(); }
 // THIRD_PARTY_NOTICES, which every build carries
@@ -24459,4 +24455,5 @@ if (mode === "window" && params.get("import")) {
     if (providers && view === "providers") renderProviders();
   }).catch(() => {});
 }
+if (mode === "window" && params.get("ask") === "quit") { params.delete("ask"); history.replaceState(null, "", "?" + params); askQuit(); }
 if (mode === "window" && params.get("view") === "providers" && params.get("edit")) editing = params.get("edit");
