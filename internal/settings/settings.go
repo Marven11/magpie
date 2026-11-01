@@ -1599,6 +1599,13 @@ func loadChecked() (Settings, error) {
 	return parse(b)
 }
 
+// Defaults are the settings of a new install, with no settings.json:
+// what `magpie settings list` shows as each one's default, and what
+// `magpie settings reset` puts back.
+func Defaults() Settings {
+	return Settings{DockSettled: true}.normal()
+}
+
 // settleDock reads a Dock choice written before With window was the
 // default (DockSettled unset) as that magpie did: no choice is Hide.
 func (s Settings) settleDock() Settings {

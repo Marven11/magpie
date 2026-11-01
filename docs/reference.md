@@ -2979,6 +2979,12 @@ magpie rm work
 
 magpie sync                     # refresh the models.dev catalog and every live model list
 
+magpie settings                 # every setting the window's Settings saves, its value and default (--json too)
+magpie settings get usageAlert
+magpie settings set noBird on   # checked and saved as the window saves it
+magpie settings set redactWords acme,globex
+magpie settings reset theme     # back to its default
+
 magpie quota                    # what is left of every subscription, plan and key balance
 magpie quota refresh codex      # read Codex's cards again now (once per 30s)
 magpie quota wait codex         # block until a Codex account has allowance again
