@@ -169,6 +169,60 @@ func TestRemoteMagpieCodexModelKeepsLite(t *testing.T) {
 	}
 }
 
+// The reporter's own route (#4445): Codex Desktop's turn on one of its
+// own models comes to magpie's ChatGPT backend route, and the Model Map
+// plugin names the remote magpie's codex model in it.
+func TestRemoteMagpieCodexModelKeepsLiteOnCodexPath(t *testing.T) {
+	f := &fake{t: t, reply: sse(
+		`data: {"type":"response.created","response":{"id":"r1","model":"m1"}}`,
+		`data: {"type":"response.completed","response":{"id":"r1","output":[],"usage":{"input_tokens":5,"output_tokens":2}}}`)}
+	f.refuse = func(body []byte) (int, string) {
+		var q struct {
+			Reasoning struct {
+				Context string `json:"context"`
+			} `json:"reasoning"`
+		}
+		json.Unmarshal(body, &q)
+		if q.Reasoning.Context != "all_turns" {
+			return http.StatusBadRequest, `{"error":{"message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`reasoning.context`" + ` to be ` + "`all_turns`" + `.","type":"invalid_request_error","code":"unsupported_value","param":"reasoning.context"}}`
+		}
+		return 0, ""
+	}
+	fresh(t)
+	up := httptest.NewServer(f)
+	t.Cleanup(up.Close)
+	if err := provider.Save(provider.Provider{ID: "office", Name: "Office", Preset: provider.RemoteMagpiePreset, Key: "sk-office", Responses: up.URL, Models: []string{"codex/m1"}}); err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Replace(liteRequest, `"model":"fake/m1",`,
+		`"model":"office/codex/m1","reasoning":{"effort":"xhigh","context":"all_turns"},`, 1)
+	rec := httptest.NewRecorder()
+	req := liteSent(body)
+	req.URL.Path = CodexPath + "/responses"
+	req.RequestURI = ""
+	req.RemoteAddr = "127.0.0.1:51000"
+	New().Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Reasoning map[string]any   `json:"reasoning"`
+		Input     []map[string]any `json:"input"`
+	}
+	if err := json.Unmarshal(f.got, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Reasoning["context"] != "all_turns" {
+		t.Fatalf("reasoning.context not kept: %s", f.got)
+	}
+	if f.head.Get(liteHeader) != "true" {
+		t.Fatalf("the Lite header was dropped: %v", f.head)
+	}
+	if len(got.Input) == 0 || got.Input[0]["type"] != "additional_tools" {
+		t.Fatalf("the Lite tools were lifted: %s", f.got)
+	}
+}
+
 // Another of the remote magpie's models still gets what Codex sends a model
 // that isn't Lite (#350): its tools lifted, the reasoning context and the
 // Lite header taken off. Only the codex model keeps the shape.
