@@ -80,6 +80,62 @@ func fakeTrust(r *bufio.Reader) {
 	}
 }
 
+// fakeOnboard shows Claude Code 2.1.316's onboarding where its config
+// folder has none done (FAKE_ONBOARD set): the text style, the security
+// notes, and with "terminal" whether to set up the terminal. Each is
+// drawn again 150ms after it is first, the keys before that lost; Enter
+// goes on, and Esc skips the terminal setup, whose Enter (Yes) is written
+// down as "terminal-set-up". Gone through, it writes "onboarded" in the
+// config folder, and shows none of it again. With "stuck" the notes come
+// back after each Enter.
+func fakeOnboard(r *bufio.Reader, how string) {
+	cfg := os.Getenv("CLAUDE_CONFIG_DIR")
+	if _, err := os.Stat(filepath.Join(cfg, "onboarded")); err == nil {
+		return
+	}
+	screens := []string{
+		"\r\n Let's get started.\r\n\r\n Choose\x1b[1Cthe text style that looks best with your terminal\r\n ❯ 1. Dark mode ✔\r\n   2. Light mode\r\n",
+		// a space a move of the cursor or a no-break space, as 2.1.316
+		// draws them
+		"\r\n Security\x1b[1Cnotes:\r\n\r\n 1. Claude can make mistakes\r\n    You should always review Claude's responses\r\n\r\n 2. Due to prompt injection risks, only use it with code you trust\r\n\r\n Press\u00a0Enter\x1b[1Cto\x1b[1Ccontinue…\r\n",
+	}
+	if how == "terminal" {
+		screens = append(screens, "\r\n Use Claude Code's terminal\x1b[1Csetup?\r\n\r\n For the optimal coding experience, enable the recommended settings\r\n for your terminal: Option+Enter for newlines and no audible bell\r\n\r\n ❯ 1. Yes, use recommended settings\r\n   2. No, maybe later with /terminal-setup\r\n\r\n Enter to confirm · Esc to skip\r\n")
+	}
+	for i := 0; i < len(screens); i++ {
+		fmt.Print("\x1b[2J\x1b[H" + screens[i])
+		deaf := make(chan struct{})
+		time.AfterFunc(150*time.Millisecond, func() {
+			fmt.Print("\x1b[2J\x1b[H" + screens[i])
+			close(deaf)
+		})
+		for {
+			c, err := r.ReadByte()
+			if err != nil {
+				os.Exit(0)
+			}
+			select {
+			case <-deaf:
+			default:
+				continue
+			}
+			terminal := strings.Contains(screens[i], "terminal\x1b[1Csetup")
+			if c == '\r' && terminal {
+				_ = os.WriteFile(filepath.Join(cfg, "terminal-set-up"), nil, 0o600)
+			}
+			if c == '\r' && how == "stuck" && i == 1 {
+				i--
+				break
+			}
+			if c == '\r' || c == 0x1b && terminal {
+				break
+			}
+		}
+	}
+	_ = os.MkdirAll(cfg, 0o700)
+	_ = os.WriteFile(filepath.Join(cfg, "onboarded"), nil, 0o600)
+}
+
 func fakeClaude(args []string) {
 	if slices.Contains(args, "-p") {
 		sc := bufio.NewScanner(os.Stdin)
@@ -98,13 +154,6 @@ func fakeClaude(args []string) {
 		time.Sleep(time.Minute)
 		os.Exit(0)
 	}
-	if os.Getenv("FAKE_NOTES") == "1" {
-		// onboarding not done: the first-run notes, as 2.1.316 draws them,
-		// a space a move of the cursor or a no-break space
-		fmt.Print("\r\n Security\x1b[1Cnotes:\r\n\r\n 1. Claude can make mistakes\r\n    You should always review Claude's responses\r\n\r\n 2. Due to prompt injection risks, only use it with code you trust\r\n\r\n Press\u00a0Enter\x1b[1Cto\x1b[1Ccontinue…\r\n")
-		time.Sleep(time.Minute)
-		os.Exit(0)
-	}
 	sid := ""
 	if i := slices.Index(args, "--session-id"); i >= 0 {
 		sid = args[i+1]
@@ -115,6 +164,9 @@ func fakeClaude(args []string) {
 	// outside one sends it
 	fakeRaw()
 	r := bufio.NewReader(os.Stdin)
+	if v := os.Getenv("FAKE_ONBOARD"); v != "" {
+		fakeOnboard(r, v)
+	}
 	if os.Getenv("FAKE_TRUST") == "1" {
 		fakeTrust(r)
 	}
@@ -482,7 +534,7 @@ func TestShimNeverPrints(t *testing.T) {
 		{"untrusted folder", "trust the folder", []string{"FAKE_TRUST=1"}},
 		// at once, not after readyWait: runEnds waits 30s (#4504)
 		{"asks to sign in", "sign", []string{"FAKE_LOGIN=1"}},
-		{"first-run notes", "notes", []string{"FAKE_NOTES=1"}},
+		{"first-run screens it stays on", "first-run screens", []string{"FAKE_ONBOARD=stuck"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			home := t.TempDir()
@@ -521,6 +573,32 @@ func TestShimFirstMessageWaitsForTools(t *testing.T) {
 	}
 	if d := time.Since(start); d < 2*time.Second {
 		t.Fatalf("answered in %s, before the tools were listed", d)
+	}
+}
+
+// A config folder whose onboarding isn't done (the account Claude Code
+// is signed in to where `claude` was never run, #4817) is gone through
+// as a person would: the text style kept, the security notes read on,
+// the terminal setup skipped. Claude Code records it done, and the next
+// run is shown none of it.
+func TestShimGoesThroughOnboarding(t *testing.T) {
+	for _, how := range []string{"1", "terminal"} {
+		t.Run(how, func(t *testing.T) {
+			home := t.TempDir()
+			for run := range 2 {
+				out, stderr, err := runEnds(t, home, []string{"FAKE_ONBOARD=" + how})
+				if err != nil || !strings.Contains(out, "echo: hello") || strings.Contains(out, "print mode") {
+					t.Fatalf("run %d ended %v, wrote %q, stderr %q", run, err, out, stderr)
+				}
+			}
+			cfg := filepath.Join(home, "claude")
+			if _, err := os.Stat(filepath.Join(cfg, "onboarded")); err != nil {
+				t.Fatal("the onboarding wasn't recorded done")
+			}
+			if _, err := os.Stat(filepath.Join(cfg, "terminal-set-up")); err == nil {
+				t.Fatal("the user's terminal was set up")
+			}
+		})
 	}
 }
 

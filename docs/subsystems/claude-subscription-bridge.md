@@ -249,7 +249,9 @@ next reply. A call in that message that wasn't made yet becomes its own
 reply when it is made (`written`). A reply told this way has no words or
 thinking: the model's text before its call is lost to the client.
 
-The user's own `~/.claude.json` and `~/.claude` are never written. Claude
+The user's own `~/.claude.json` and `~/.claude` are never written by
+magpie (Claude Code writes them, as when it records its onboarding done,
+below). Claude
 Code asks whether to trust a folder it has not run in; the helper answers
 yes only when the bridge sets `MAGPIE_CLAUDE_TUI_TRUST=1`, which it does
 for magpie's own working folder or a saved account's config directory,
@@ -377,11 +379,28 @@ anew: a turn that takes earlier turns back, an effort change. A run given up on
 (`letGo`) is not taken back, since the interactive mode can't answer a
 control request to stop a turn.
 
+A config folder whose onboarding isn't done (one only `-p` ran in, or
+the account Claude Code is signed in to where `claude` was never run,
+#4817, steven_4422 on Discord) shows its first-run screens before the
+prompt. The helper goes through them as a person would (`ready`,
+`onboard`): Enter on the text style (the default kept), Enter on the
+security notes (`firstRun`), and Esc on whether to set up the terminal
+(`terminalSetup`, shown for a TERM_PROGRAM it knows, such as
+Apple_Terminal or vscode), so that nothing of the user's terminal is set
+up. Each key goes once its screen has stayed drawn 300ms (`trustSettle`).
+Claude Code then records the onboarding done itself (2.1.316:
+`hasCompletedOnboarding`, `lastOnboardingVersion`; magpie writes neither
+in the user's folder),
+and later runs show none of it. Until this change the notes ended the
+run, so with the interactive mode On every request and the `/usage` read
+failed until the user ran Claude Code once by hand. A screen still shown
+after three answers (`onboardTries`) ends the run, saying to run Claude
+Code once in a terminal. `TestShimGoesThroughOnboarding` holds it.
+
 If the interactive Claude Code doesn't start or show its prompt within 45
-seconds (`claudetui.ReadyWait`), or asks how to sign in (`signIn`: a
+seconds (`claudetui.ReadyWait`), asks how to sign in (`signIn`: a
 Claude Code signed in for `-p` only, as in a container given
-`CLAUDE_CODE_OAUTH_TOKEN`), shows its first-run notes (`firstRun`:
-"Security notes", a config folder whose onboarding isn't done) or asks
+`CLAUDE_CODE_OAUTH_TOKEN`), stays on its first-run screens, or asks
 about a folder the user hasn't trusted, the helper ends, saying why on
 its stderr and in its exit (`fail` in `Run`). It never becomes `claude
 -p`. Until 11-01 it did, and wrote `<cache>/magpie/claude-tui-broken`,

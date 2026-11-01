@@ -331,12 +331,25 @@ var errUntrusted = errors.New(Untrusted + ", which only its user answers")
 // ~/.claude.json has no onboarding done): nothing the helper may answer.
 var signIn = regexp.MustCompile(`Select login method|Log in with your Claude account|claude\.ai/oauth/authorize`)
 
-// firstRun is the notes Claude Code's interactive mode shows where its
-// onboarding isn't done (a config folder only -p was run in, given
-// CLAUDE_CODE_OAUTH_TOKEN): agreeing to them is the user's, as is what
-// comes after them. It is matched in the screen's words, any space
-// between them one: Claude Code draws some by moving the cursor.
-var firstRun = regexp.MustCompile(`Security notes:.*Press Enter to continue`)
+// The screens Claude Code's interactive mode shows where its onboarding
+// isn't done (a config folder only -p was run in, or one signed in where
+// `claude` was never run, #4817), after its text style (theme): the
+// security notes, which Enter goes past as it would for a person, and,
+// in a terminal it knows how to set up (TERM_PROGRAM Apple_Terminal,
+// vscode, …), whether to set it up, which Esc skips: magpie's terminal is
+// no one's. Once past them, Claude Code records the onboarding done
+// itself (2.1.316: hasCompletedOnboarding, lastOnboardingVersion), and
+// the next run shows none of them. They are matched in the screen's
+// words, any space between them one: Claude Code draws some by moving the
+// cursor.
+var (
+	firstRun      = regexp.MustCompile(`Security notes:.*Press Enter to continue`)
+	terminalSetup = regexp.MustCompile(`terminal setup\?.*Esc to skip`)
+)
+
+// onboardTries is how often one onboarding screen is answered before the
+// run ends.
+const onboardTries = 3
 
 // ready waits for Claude Code's prompt. Asked whether to trust the folder
 // it runs in, it is told yes, as a person would, when TrustEnv says so.
@@ -345,15 +358,43 @@ func (s *shim) ready() error {
 	answered := 0
 	prompted := false
 	var yesAt, downAt time.Time
+	// an onboarding screen is answered once it has stayed drawn
+	// trustSettle: a key sent as it is first drawn can be lost to its
+	// being drawn again, and nothing then draws it once more
+	shownAt := map[string]time.Time{}
+	pressed := map[string]int{}
+	onboard := func(screen, key string) error {
+		if shownAt[screen].IsZero() {
+			shownAt[screen] = time.Now()
+		}
+		if time.Since(shownAt[screen]) < trustSettle {
+			return nil
+		}
+		if pressed[screen] >= onboardTries {
+			return fmt.Errorf("Claude Code's interactive mode stays on its first-run screens, its onboarding not done; run Claude Code once in a terminal and go through them: %s", s.lastScreen())
+		}
+		pressed[screen]++
+		delete(shownAt, screen)
+		s.clearScreen()
+		_, _ = io.WriteString(s.pty, key)
+		return nil
+	}
 	for {
 		p := s.plain()
+		words := strings.Join(strings.Fields(p), " ")
 		switch {
 		case strings.Contains(p, "trust this folder") && os.Getenv(TrustEnv) != "1":
 			return errUntrusted
 		case signIn.MatchString(p):
 			return fmt.Errorf("Claude Code's interactive mode asks to sign in: %s", s.lastScreen())
-		case firstRun.MatchString(strings.Join(strings.Fields(p), " ")):
-			return fmt.Errorf("Claude Code's interactive mode shows its first-run notes, its onboarding not done: %s", s.lastScreen())
+		case firstRun.MatchString(words):
+			if err := onboard("notes", "\r"); err != nil {
+				return err
+			}
+		case terminalSetup.MatchString(words):
+			if err := onboard("terminal", "\x1b"); err != nil {
+				return err
+			}
 		case strings.Contains(p, "trust this folder") && answered < 3:
 			// the choice is the last one drawn after ❯, "No, exit" at
 			// first. A key sent as the question is first drawn can be lost
@@ -384,9 +425,10 @@ func (s *shim) ready() error {
 			// --no-chrome
 			s.clearScreen()
 			_, _ = io.WriteString(s.pty, "\x1b")
-		case strings.Contains(p, "Choose the text style"):
-			s.clearScreen()
-			_, _ = io.WriteString(s.pty, "\r")
+		case strings.Contains(words, "Choose the text style"):
+			if err := onboard("theme", "\r"); err != nil {
+				return err
+			}
 		case strings.Contains(p, "❯ "):
 			if !s.toolsListed() {
 				// drawn before Claude Code has its MCP servers' tools: it
