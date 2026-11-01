@@ -298,6 +298,7 @@
     try {
       await api("plugins/" + op, body);
       busy.delete(pkg);
+      for (const e of mine?.plugins || []) if (op === "update" || e.spec === body?.spec) delete heads[e.spec]; // stale once installed (#4802)
       await refresh();
       if (done) done();
     } catch (e) {
@@ -464,7 +465,11 @@
     } else b.title = t("Fetches it from {repo} again", { repo: e.spec }) + "\n" + t("{have} installed, {repo} is at {head}", { have: e.commit, repo: e.spec, head: e.head });
     b.onclick = (ev) => {
       ev.stopPropagation();
-      act(pkg, "upgrade", { spec: e.spec }, () => status(npm ? t("{name} updated to v{v}", { name: l?.name || pkg, v: e.latest }) : t("{name} is up to date", { name: shownName(e) }), "ok"));
+      const was = e.commit;
+      act(pkg, "upgrade", { spec: e.spec }, () => {
+        const now = mine?.plugins?.find((x) => x.spec === e.spec)?.commit;
+        status(npm ? t("{name} updated to v{v}", { name: l?.name || pkg, v: e.latest }) : now && was && !sameCommit(now, was) ? t("{name} updated to {commit}", { name: shownName(e), commit: now }) : t("{name} is up to date", { name: shownName(e) }), "ok");
+      });
     };
     b.onkeydown = (ev) => ev.stopPropagation();
     return true;
@@ -1198,7 +1203,7 @@
       nm.append(c);
     } else if ((ck?.status === "current" || ck?.status === "update") && e.version) {
       const c = el("span", "pm-chip soft", t("Up to date"));
-      c.title = (isGit(e.spec) ? t("{head} is the newest commit of {repo}", { head: ck.head || e.head || "", repo: e.spec }) : t("v{v} is the newest on npm", { v: e.version })) + "\n" + t("Last checked {time}", { time: checkedAt() });
+      c.title = (isGit(e.spec) ? t("{head} is the newest commit of {repo}", { head: e.head || ck.head || "", repo: e.spec }) : t("v{v} is the newest on npm", { v: e.version })) + "\n" + t("Last checked {time}", { time: checkedAt() });
       nm.append(c);
     }
     // built-ins moved onto it, then its other providers if 2+ (#3902)
