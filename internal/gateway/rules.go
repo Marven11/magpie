@@ -97,6 +97,10 @@ type Classified struct {
 	Cached bool    `json:"cached,omitempty"` // said before, for the same message
 	Ms     int     `json:"ms,omitempty"`     // how long asking it took
 	Error  string  `json:"error,omitempty"`  // why it couldn't say: no intent matches then, unless Fallback
+	// Above: the reasoning a group above this one picked for the turn, so
+	// this one's classifier wasn't asked for it (#4358): the turn reasons
+	// at that, not as the agent asked
+	Above string `json:"above,omitempty"`
 	// Fallback: "previous" when it couldn't say and the turn keeps the
 	// intent the turn before had (After), rather than none
 	Fallback string `json:"fallback,omitempty"`
@@ -297,18 +301,19 @@ func ruleFor(key string, g provider.Group, ms []provider.Member, req *Request, a
 	// never be sent (withEffort leaves "none" as it is), only shown (#2247)
 	intents := provider.Intents(g.Rules, q)
 	effort := g.Effort == provider.EffortAuto && hit.Effort != "" && !req.ThinkOff
+	above := ""
 	if effort && pick != "" {
 		// the group above picked this turn's reasoning (#4358): its answer
 		// is the one sent, so asking here again is paid for and thrown
 		// away (a group in it answered 27 of 28 turns on one reporter's
 		// day, several seconds each, and the turn sent the group above's)
-		effort = false
+		effort, above = false, pick
 		if len(intents) == 0 {
-			hit.Classified = &Classified{By: g.Classifier, Error: "the group above already picked this turn's reasoning"}
+			hit.Classified = &Classified{By: g.Classifier, Above: pick}
 		}
 	}
 	if len(intents) > 0 || effort {
-		c := &Classified{By: g.Classifier, Intents: intents}
+		c := &Classified{By: g.Classifier, Intents: intents, Above: above}
 		if had && slices.Contains(intents, tr.intent) {
 			c.After = tr.intent // a message that only carries on is of its kind
 		}

@@ -69,6 +69,12 @@ func TestNestedGroupClassifierNotAskedWhenTheParentPicked(t *testing.T) {
 	if len(r.Nested) != 1 || r.Nested[0].Group != "quality" || r.Nested[0].Rule == nil || r.Nested[0].Rule.Pick != "" {
 		t.Fatalf("nested traced %+v", r.Nested)
 	}
+	// the trace says the group above picked, not that the group in it
+	// couldn't say (the Routing page told that as "reasons as the agent
+	// asked", which the turn doesn't)
+	if c := r.Nested[0].Rule.Classified; c == nil || c.Above != "high" || c.Error != "" {
+		t.Fatalf("nested classified %+v", c)
+	}
 	// the parent's classifier giving nothing, the group in it is asked as
 	// before: its pick is what the turn goes by
 	parent.set("", 500)
