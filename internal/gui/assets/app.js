@@ -7717,11 +7717,12 @@ function pluginOptionsField(sub) {
     const row = el("div", "plugin-option");
     row.dataset.key = o.key;
     const text = el("div", "plugin-option-text");
-    text.append(el("div", "n", o.label));
-    if (o.description) text.append(el("div", "hint", o.description));
+    const label = optionWords(o, "label"), about = optionWords(o, "description"), ask = optionWords(o, "confirm");
+    text.append(el("div", "n", label));
+    if (about) text.append(el("div", "hint", about));
     const draw = () => {
       const seg = segs([["off", t("Off")], ["on", t("On")]], now(o) ? "on" : "off", async (v) => {
-        if (v === "on" && !now(o) && o.confirm && !(await confirmAction(t("Turn on {name}?", { name: o.label }), o.confirm, t("Turn on")))) {
+        if (v === "on" && !now(o) && ask && !(await confirmAction(t("Turn on {name}?", { name: label }), ask, t("Turn on")))) {
           seg.replaceWith(draw());
           return;
         }
@@ -7733,6 +7734,16 @@ function pluginOptionsField(sub) {
     box.append(row);
   }
   return field(t("Plugin options"), box, t("{plugin} declares these and reads them as it works; nothing runs on its own when one changes.", { plugin: sub.plugin.name || sub.plugin.pid }));
+}
+// a plugin option's words in the window's language (plugins#590)
+function optionWords(o, which) {
+  const m = o[which + "s"] || {};
+  return m[locale] || m[locale.split("-")[0]] || o[which] || "";
+}
+// said under the models while a filtersModels switch is on, as saved
+function pluginFilterNote(sub) {
+  return (sub?.plugin?.options || []).filter((o) => o.filtersModels && o.on)
+    .map((o) => t("Only some models are listed: the plugin option “{option}” is on.", { option: optionWords(o, "label") })).join(" ");
 }
 // savePluginOptions saves the draft's changed plugin options, by its own id.
 async function savePluginOptions(sub) {
@@ -8979,11 +8990,7 @@ const decideOnly = (p) => !!p?.decide && !(p.chat || p.responses || p.anthropic 
 // they are: its Jev Router (typesafe/jev-router) is a chat model
 const decidesModel = (p, id) => !!p.decide && (decideOnly(p) || (p.deciders ? p.deciders.includes(id) : id.split("/").some((s) => /^jev(?:-|$)/i.test(s))));
 // modelAPIs: the APIs one of p's models can be asked on alone, those it has
-// a URL for when it has more than one — a custom provider's, a preset's or
-// a subscription's alike (01huadalang on Discord: 一个 api 里有很多模型但是不同协议;
-// OpenCode Go's DeepSeek answers on Responses too), its Gemini URL's
-// among them (Kayphoon on Discord: 自定义供应商兼容 gemini 格式了，模型的
-// 配置里还是只能选 chat 和 anthropic)
+// a URL for when it has more than one, Gemini's too (01huadalang, Kayphoon)
 const modelAPIs = (p) => {
   const urls = ["chat", "responses", "anthropic", "gemini"].filter((k) => ((draft?.id === p.id ? draft[k] : undefined) ?? p[k] ?? "").trim());
   return urls.length < 2 ? [] : PROTOS.filter(([k]) => urls.includes(k));
@@ -9201,13 +9208,9 @@ function drawEditor(p, presetID) {
       b.title = t(hint);
       b.onclick = () => {
         if (draft.api === v) return;
-        // each protocol keeps its own URL (#105). One typed here and not
-        // saved moves to a protocol without one, spelled as that protocol
-        // wants it: the kind was picked after the URL (#73). A saved URL
-        // stays where it is, and one not given yet stays empty.
-        // A URL then typed for the protocol it was carried to is that
-        // protocol's own, and the carried one goes back where it was typed,
-        // so a URL can be typed for each protocol in turn (#1231).
+        // each protocol keeps its own URL (#105); an unsaved one moves to a
+        // protocol without one, in its spelling (#73), and goes back once
+        // that protocol is given its own (#1231)
         const from = apiField[draft.api], to = apiField[v];
         carried = null;
         if (!draft[to] && draft[from] && draft[from] !== (p?.[from] || "")) {
@@ -9321,7 +9324,7 @@ function drawEditor(p, presetID) {
       acct.append(icon(a.agentIcon), el("span", "n", a.user), hideAccounts.eye(a.user, p.id), el("span", "plan", accountPlan(a)));
       ed.append(...field(t("Account"), acct, t("{agent}'s sign-in, read from its own files. Sign out there and this provider goes away.", { agent: a.agentName })));
     }
-    ed.append(...field(t("Models"), renderModels(p), ""));
+    ed.append(...field(t("Models"), renderModels(p), pluginFilterNote(subOf(a.agent))));
     if (p.drawIds?.length) ed.append(...renderDrawers(p));
     // a subscription's window too: Codex's backend says 272K for models
     // that take 872K (#120)
@@ -9403,11 +9406,8 @@ function drawEditor(p, presetID) {
     ed.append(...field(t("Endpoint"), endpoint, pr.endpointHint ? t(pr.endpointHint) : ""));
   }
 
-  // a server on this machine (Ollama, LM Studio, oMLX, MLX-Serve) can
-  // listen on another port, or be another computer's: its address moves each URL, each API
-  // keeping its path, as provider.AtAddress does. Shown first and never
-  // folded: folded under the key, an LM Studio on another computer read
-  // as one whose base URL can't be changed (mengxiangziyou on X)
+  // a local server's address moves each URL, keeping its path
+  // (provider.AtAddress); shown first, never folded (mengxiangziyou on X)
   let address = null, addressField = null;
   if (pr?.kind === "local") {
     // a saved provider's URLs (or a duplicate's) start it; a new one's are

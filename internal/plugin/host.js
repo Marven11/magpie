@@ -1894,14 +1894,34 @@ const shown = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "")
 
 // optionsOf are the switches a plugin declares for its provider, magpie's
 // own field (#2038, Vocllum): auth.options, each {key, label, description?,
-// default?, confirm?}. magpie shows each as an Off/On switch in the
-// provider's editor and keeps what the user sets; the plugin reads it with
-// input.magpie.option(provider, key). A switch is kept and handed over,
-// and the models listed again (one may go by it); nothing else is run. Keys are [a-z0-9_-], 1–40 long,
-// the first of a key kept; at most MAX_OPTIONS; one without a key or a
-// label is left out.
+// default?, confirm?, labels?, descriptions?, confirms?, filtersModels?}.
+// magpie shows each as an Off/On switch in the provider's editor and keeps
+// what the user sets; the plugin reads it with input.magpie.option(provider,
+// key). A switch is kept and handed over, and the models listed again (one
+// may go by it); nothing else is run. Keys are [a-z0-9_-], 1–40 long, the
+// first of a key kept; at most MAX_OPTIONS; one without a key or a label is
+// left out. labels, descriptions and confirms are the same words in the
+// window's other languages ({"zh": "…", "zh-TW": "…", "ja": "…", "de":
+// "…"}), as a page's titles are (plugins#590): label stays a string beside
+// them, so an older magpie still reads the option. filtersModels says the
+// plugin's model list leaves models out while the switch is on, which the
+// editor says by the models.
 const MAX_OPTIONS = 16
 const OPTION_KEY = /^[a-z0-9_-]{1,40}$/
+// inLanguages are words by language, each capped at n, at most 16, without
+// the empty ones; undefined for none or for what isn't an object
+function inLanguages(m, n) {
+  if (!m || typeof m !== "object" || Array.isArray(m)) return undefined
+  let out
+  for (const [k, v] of Object.entries(m)) {
+    const lang = k.trim(), said = shown(v, n)
+    if (!lang || lang.length > 16 || !said) continue
+    out ??= {}
+    if (Object.keys(out).length >= 16) break
+    out[lang] = said
+  }
+  return out
+}
 function optionsOf(auth) {
   const out = []
   if (!Array.isArray(auth?.options)) return out
@@ -1917,6 +1937,10 @@ function optionsOf(auth) {
       description: shown(o.description, 300),
       default: o.default === true,
       confirm: shown(o.confirm, 300),
+      labels: inLanguages(o.labels, 60),
+      descriptions: inLanguages(o.descriptions, 300),
+      confirms: inLanguages(o.confirms, 300),
+      filtersModels: o.filtersModels === true,
     })
   }
   return out

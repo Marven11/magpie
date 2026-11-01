@@ -337,6 +337,14 @@ leaving it off; Save posting each changed one by the plugin's provider id
 before the provider, and none switched back. Chromium and WebKit, 1100 and
 420 wide, every language.
 
+`plugin-option-words.test.cjs` checks a plugin option in the reader's
+language (plugins#590): its `labels`, `descriptions` and `confirms` by the
+window's language, zh-TW falling back to zh and the rest to the plain
+words; and, while a `filtersModels` switch is on as saved, the note under
+the Models field's chips that the list is filtered, inside the editor; off,
+none. A WorkBuddy moved onto its plugin, Chromium and WebKit, 1100 and 420
+wide, every language.
+
 `plugin-move-overflow.test.cjs` checks a Plugins card that offers a
 built-in's accounts: the button is one word beside the name, as Install is
 ("Move", its title saying whose accounts and how many), on one line, and it
