@@ -45,8 +45,8 @@ func TestClaudeViaMagpieKept(t *testing.T) {
 	if got := values(); !got["oa/gpt-5.4"] {
 		t.Fatalf("a caller's write reached the options kept: %v", got)
 	}
-	// the model field appends the list kept to its own models: its
-	// options are a list of their own too
+	// the model field joins the list kept to its own models: its
+	// options are never the kept list itself, even with no own models
 	home := os.Getenv("HOME")
 	writeFile(t, filepath.Join(home, ".claude", "settings.json"), `{}`)
 	field := claude(home).Field("model").Options(map[string]string{})

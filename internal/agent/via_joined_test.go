@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"testing"
@@ -87,5 +89,31 @@ func TestSameOptionReadsEveryField(t *testing.T) {
 		if sameOption(a, b) {
 			t.Errorf("sameOption doesn't read Option.%s", typ.Field(i).Name)
 		}
+	}
+}
+
+// Claude Code's model field joins its own models with the list it keeps of
+// its own (claudeViaShared), on this machine and in a distro asleep, and
+// keeps that joined list too.
+func TestClaudeModelFieldKeepsTheJoinedList(t *testing.T) {
+	syncHome(t)
+	if err := provider.Save(provider.Provider{ID: "oa", Name: "OA", Key: "k", Chat: "http://127.0.0.1:1/v1", Models: []string{"gpt-5.5", "gpt-5.4"}}); err != nil {
+		t.Fatal(err)
+	}
+	home := os.Getenv("HOME")
+	writeFile(t, filepath.Join(home, ".claude", "settings.json"), `{}`)
+	field := claude(home).Field("model")
+	first := field.Options(map[string]string{})
+	if !slices.ContainsFunc(first, func(o Option) bool { return o.Value == "oa/gpt-5.4" }) {
+		t.Fatal("the model field doesn't offer oa's models")
+	}
+	if again := field.Options(map[string]string{}); &again[0] != &first[0] {
+		t.Fatal("Claude Code's own models joined its list from magpie again")
+	}
+	if err := provider.Save(provider.Provider{ID: "nb", Name: "NB", Key: "k", Chat: "http://127.0.0.1:1/v1", Models: []string{"y"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := field.Options(map[string]string{}); !slices.ContainsFunc(got, func(o Option) bool { return o.Value == "nb/y" }) {
+		t.Fatal("a provider saved since is not offered")
 	}
 }

@@ -51,7 +51,14 @@ func withVia(own []Option, agent, prefix string) []Option {
 	if len(own) == 0 {
 		return via
 	}
-	key := [2]string{agent, prefix}
+	return joinedVia(own, via, [2]string{agent, prefix})
+}
+
+// joinedVia is append(own, via...) for a field whose via is a shared list,
+// kept under key while own reads the same and via is the list kept (see
+// withVia). Read only; with no own models it is still a list apart from
+// via, as Claude Code's model field has always given.
+func joinedVia(own, via []Option, key [2]string) []Option {
 	joinedOptions.Lock()
 	defer joinedOptions.Unlock()
 	if j, ok := joinedOptions.m[key]; ok && sameList(j.via, via) && slices.EqualFunc(j.own, own, sameOption) {

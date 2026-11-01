@@ -1755,7 +1755,11 @@ func claudeIn(at place) *Agent {
 			// time, folded in the picker (#496). Only this machine's: a
 			// distro's Claude Code has a sign-in of its own, which magpie
 			// doesn't read
-			return append(group(name, own), claudeViaShared(name == "Claude Code" && at.id == "")...)
+			fold, key := name == "Claude Code" && at.id == "", "\x00claude-via"
+			if fold {
+				key += "-folded"
+			}
+			return joinedVia(group(name, own), claudeViaShared(fold), [2]string{key, at.id})
 		},
 	}, {
 		// the effort Claude Code starts with, as its /effort saves it: under
