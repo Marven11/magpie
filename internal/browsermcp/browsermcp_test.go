@@ -64,3 +64,55 @@ func TestBridgePassesLinesWithItsSession(t *testing.T) {
 		t.Fatalf("gateway gone: %q", out.String())
 	}
 }
+
+// `magpie mcp search` passes each line to the gateway's web search server,
+// with no browser session, and a gateway that can't be reached names
+// Magpie Web Search.
+func TestSearchBridgePassesLines(t *testing.T) {
+	var mu sync.Mutex
+	var paths, sessions []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+gateway.Token {
+			http.Error(w, "wrong", 400)
+			return
+		}
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		sessions = append(sessions, r.Header.Get(gateway.BrowserSessionHeader))
+		mu.Unlock()
+		b, _ := io.ReadAll(r.Body)
+		var m struct {
+			ID     json.RawMessage
+			Method string
+		}
+		json.Unmarshal(b, &m)
+		if len(m.ID) == 0 {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": map[string]any{"method": m.Method}})
+	}))
+	defer srv.Close()
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}` + "\n" +
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n" +
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"web_search","arguments":{"query":"magpie"}}}` + "\n")
+	var out bytes.Buffer
+	if err := serveSearch(in, &out, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Split(strings.TrimSpace(out.String()), "\n"); len(lines) != 2 || !strings.Contains(out.String(), `"method":"tools/call"`) {
+		t.Fatalf("out: %q", out.String())
+	}
+	if len(paths) != 3 || paths[0] != gateway.SearchMCPPath || paths[2] != gateway.SearchMCPPath || strings.Join(sessions, "") != "" {
+		t.Fatalf("paths %q, sessions %q", paths, sessions)
+	}
+
+	out.Reset()
+	srv.Close()
+	if err := serveSearch(strings.NewReader(`{"jsonrpc":"2.0","id":7,"method":"tools/list"}`+"\n"), &out, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"id":7`) || !strings.Contains(out.String(), "Magpie Web Search can't be reached") {
+		t.Fatalf("gateway gone: %q", out.String())
+	}
+}

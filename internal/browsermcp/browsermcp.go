@@ -3,6 +3,11 @@
 // servers as commands. Each message is passed to the running gateway and
 // its answer back; the process is one agent session, which goes on in the
 // tab it was working in.
+//
+// `magpie mcp search` is the web search MCP server (gateway.SearchMCPPath)
+// passed on the same way, with no session: the Library's Magpie Web
+// Search, which an agent is given as a command as it is Magpie Browser
+// (lutra_fs on Discord: the search was an address in Settings alone).
 package browsermcp
 
 import (
@@ -27,11 +32,24 @@ func Run(args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("magpie mcp browser takes no arguments")
 	}
+	return serve(os.Stdin, os.Stdout, gatewayBase())
+}
+
+// RunSearch serves the web search MCP server on stdin and stdout until
+// stdin ends.
+func RunSearch(args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("magpie mcp search takes no arguments")
+	}
+	return serveSearch(os.Stdin, os.Stdout, gatewayBase())
+}
+
+func gatewayBase() string {
 	base := strings.TrimRight(os.Getenv("MAGPIE_GATEWAY"), "/")
 	if base == "" {
 		base = gateway.URL()
 	}
-	return serve(os.Stdin, os.Stdout, base)
+	return base
 }
 
 func session() string {
@@ -46,7 +64,16 @@ type message struct {
 }
 
 func serve(in io.Reader, out io.Writer, base string) error {
-	s := &bridge{base: base, session: session(), client: &http.Client{Timeout: 2 * time.Minute}, out: out}
+	return relay(in, &bridge{base: base, path: gateway.BrowserMCPPath, title: "Magpie Browser", session: session(), client: &http.Client{Timeout: 2 * time.Minute}, out: out})
+}
+
+// serveSearch passes each line to the gateway's web search server. A
+// search that reads a page through a slow searcher model takes minutes.
+func serveSearch(in io.Reader, out io.Writer, base string) error {
+	return relay(in, &bridge{base: base, path: gateway.SearchMCPPath, title: "Magpie Web Search", client: &http.Client{Timeout: 5 * time.Minute}, out: out})
+}
+
+func relay(in io.Reader, s *bridge) error {
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 64<<10), 16<<20)
 	var wg sync.WaitGroup
@@ -72,11 +99,14 @@ func serve(in io.Reader, out io.Writer, base string) error {
 	return sc.Err()
 }
 
+// bridge passes one stdio session's messages to the gateway's server at
+// path, title naming it when the gateway can't be reached; a session ""
+// sends no session header.
 type bridge struct {
-	base, session string
-	client        *http.Client
-	mu            sync.Mutex
-	out           io.Writer
+	base, path, title, session string
+	client                     *http.Client
+	mu                         sync.Mutex
+	out                        io.Writer
 }
 
 func (s *bridge) write(b []byte) {
@@ -94,7 +124,7 @@ func (s *bridge) fail(id json.RawMessage, msg string) {
 }
 
 func (s *bridge) pass(m message, body []byte) {
-	r, err := http.NewRequest(http.MethodPost, s.base+gateway.BrowserMCPPath, bytes.NewReader(body))
+	r, err := http.NewRequest(http.MethodPost, s.base+s.path, bytes.NewReader(body))
 	if err != nil {
 		s.fail(m.ID, err.Error())
 		return
@@ -102,10 +132,12 @@ func (s *bridge) pass(m message, body []byte) {
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Accept", "application/json")
 	r.Header.Set("Authorization", "Bearer "+gateway.Token)
-	r.Header.Set(gateway.BrowserSessionHeader, s.session)
+	if s.session != "" {
+		r.Header.Set(gateway.BrowserSessionHeader, s.session)
+	}
 	resp, err := s.client.Do(r)
 	if err != nil {
-		s.fail(m.ID, "magpie isn't running, so Magpie Browser can't be reached: start magpie ("+err.Error()+")")
+		s.fail(m.ID, "magpie isn't running, so "+s.title+" can't be reached: start magpie ("+err.Error()+")")
 		return
 	}
 	defer resp.Body.Close()

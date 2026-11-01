@@ -396,3 +396,36 @@ func TestMagpieBrowserIsOptIn(t *testing.T) {
 		t.Fatalf("Codex's entry: tool_timeout_sec = %v %v", v, ok)
 	}
 }
+
+// Magpie Web Search is magpie's own too, `magpie mcp search` (lutra_fs on
+// Discord: Settings named the search MCP, the Library didn't have it),
+// given only to the agents picked for it: a search costs what the search
+// set in Settings charges.
+func TestMagpieWebSearchIsOptIn(t *testing.T) {
+	sandbox(t)
+	ok(t)(InstallServer(searchServerName, nil, nil))
+	list, err := MarketServers("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(list, func(m MarketServer) bool { return m.ID == searchServerName })
+	if i < 0 || !list[i].OptIn || list[i].Have != searchServerName || list[i].Title != "Magpie Web Search" {
+		t.Fatalf("market: %+v", list)
+	}
+	l, err := load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := l.server(searchServerName)
+	if s == nil || len(s.Agents) != 0 || !filepath.IsAbs(s.Command) || strings.Join(s.Args, " ") != "mcp search" {
+		t.Fatalf("added as %+v", s)
+	}
+	if v, ok := valueOf((&mcpFile{Format: fmtCodex}).encode(s), "tool_timeout_sec"); !ok || v != 120 {
+		t.Fatalf("Codex's entry: tool_timeout_sec = %v %v", v, ok)
+	}
+	// written by hand with another magpie binary, it is the same server
+	other := Server{Name: "web", Transport: "stdio", Command: "/opt/other/magpie", Args: []string{"mcp", "search"}}
+	if serverKey(&other) != serverKey(s) {
+		t.Fatalf("keys %q and %q", serverKey(&other), serverKey(s))
+	}
+}

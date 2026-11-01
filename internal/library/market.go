@@ -93,6 +93,7 @@ func secretEnv(key, label, where string) Input {
 var featured = []MarketServer{
 	selfServer(),
 	browserServer(),
+	searchServer(),
 	remoteServer("context7", "Context7", "Upstash", gh("upstash"), "https://mcp.context7.com/mcp",
 		"Up-to-date documentation and code examples for any library, straight into the prompt.", false,
 		Input{Key: "CONTEXT7_API_KEY", Where: "header", Label: "API key", Description: "Optional — raises the rate limit. From context7.com/dashboard", Secret: true, format: "{}"}),
@@ -186,6 +187,24 @@ const browserServerName = "magpie-browser"
 func browserServer() MarketServer {
 	m := localServer(browserServerName, "Magpie Browser", "Magpie", "https://usemagpie.ai/favicon.png", "https://usemagpie.ai",
 		"Use your own browser: your tabs, signed in to the sites you use. Open pages, click, type, upload, read and take screenshots, through the Magpie Browser extension.", magpieCommand, []string{"mcp", "browser"})
+	m.OptIn = true
+	return m
+}
+
+// searchServerName is the name Magpie Web Search's server is written
+// under, the name the gateway's own search server goes by (ownMCP).
+const searchServerName = "magpie-web-search"
+
+// searchServer is Magpie Web Search: magpie's web search (Settings ›
+// Models › Web search) as a web_search and a web_fetch tool, through
+// `magpie mcp search`, which passes each call to the gateway's
+// SearchMCPPath. Settings named it, by its address only, and the Library
+// didn't have it (lutra_fs on Discord). A search costs what the searcher
+// or the search API it asks charges, and an agent mostly has a search of
+// its own, so it is given only to the agents picked for it.
+func searchServer() MarketServer {
+	m := localServer(searchServerName, "Magpie Web Search", "Magpie", "https://usemagpie.ai/favicon.png", "https://usemagpie.ai",
+		"Search the web with the search set in Magpie (Settings → Models → Web search), and read a page by its URL.", magpieCommand, []string{"mcp", "search"})
 	m.OptIn = true
 	return m
 }
@@ -300,7 +319,7 @@ func serverKey(s *Server) string {
 	if s.Remote() {
 		return strings.TrimSuffix(strings.ToLower(s.URL), "/")
 	}
-	if len(s.Args) == 2 && s.Args[0] == "mcp" && (s.Args[1] == "image" || s.Args[1] == "browser") {
+	if len(s.Args) == 2 && s.Args[0] == "mcp" && (s.Args[1] == "image" || s.Args[1] == "browser" || s.Args[1] == "search") {
 		return "magpie mcp " + s.Args[1] // magpie's own, wherever its binary is
 	}
 	for _, a := range s.Args {

@@ -5895,6 +5895,8 @@ magpie.plugin("library", (ctx) => {
     if (x.name === "magpie-browser") {
       ed.append(el("p", "mk-hint", t("Pick the agents that may use your browser: they act in your tabs, signed in as you are.")));
       ed.append(browserSetup());
+    } else if (x.name === "magpie-web-search") {
+      ed.append(el("p", "mk-hint", t("Pick the agents that may search with it: each search goes where Settings → Models → Web search sends it, and costs what that charges.")));
     } else if (x.optIn) ed.append(el("p", "mk-hint", t("Pick the agents that may generate images: each image costs what the model set in Settings → Images charges.")));
     const firsts = [];
     for (const i of x.inputs || []) {
@@ -6105,7 +6107,7 @@ magpie.plugin("library", (ctx) => {
     open: () => (loading = load()),
     relang: () => load(),
     // one of the market's servers up close, from another page (Settings ›
-    // Images' Magpie Image, #2091): its sheet over the MCP servers tab, to
+    // Images' Magpie Image, #2091, and Settings › Models' Magpie Web Search): its sheet over the MCP servers tab, to
     // pick the agents that get it; one already in the library is on that
     // tab's list, which opens with nothing over it
     server: async (name) => {
