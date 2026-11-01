@@ -165,4 +165,27 @@ func TestMissingModuleReadsOnlyTheWordsBeforeTheQuote(t *testing.T) {
 	if made := m1.TotalAlloc - m0.TotalAlloc; made > 8<<10 {
 		t.Fatalf("judging the words made %d bytes, 8 KiB at most: the text before the quote is being read whole", made)
 	}
+
+	// a session written in Chinese is read as cheaply: the text before the
+	// words is not read whole because it is not ASCII
+	zh := strings.Repeat("找不到模块", 30000) + "：" + cue
+	s = zh + "'" + name + "'"
+	a = len(zh) + 1
+	if !run(s, a) {
+		t.Fatal("after Chinese text: not named by the error")
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&m0)
+	run(s, a)
+	runtime.ReadMemStats(&m1)
+	if made := m1.TotalAlloc - m0.TotalAlloc; made > 8<<10 {
+		t.Fatalf("after Chinese text, judging the words made %d bytes, 8 KiB at most", made)
+	}
+
+	// spaces between the words and the quote, more than the window, still
+	// leave the words read
+	sp := strings.Repeat("x", 1000) + " " + cue + strings.Repeat(" ", 100)
+	if !run(sp+"'"+name+"'", len(sp)+1) {
+		t.Fatal("many spaces before the quote: not named by the error")
+	}
 }

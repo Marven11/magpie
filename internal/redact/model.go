@@ -645,20 +645,18 @@ func underPackages(s string, a int) bool {
 // read and lowered here, once for each place a known value turns up at in
 // a session's body (knownSpans asks packageAt), so a long session paid its
 // whole length again for every value already masked in it — a 555 KB turn
-// held minutes in the masking and was answered 504 (#4766). A letter a
-// lower case folds wider than stands in those bytes only where the text is
-// really written in one, and there the whole text before the quote is
-// read, as before.
+// held minutes in the masking and was answered 504 (#4766). The spaces
+// before the quote are trimmed first, so the window ends at the words
+// however many stand between. Lowering is rune by rune with no context,
+// so lowering the window gives the same last bytes as lowering the whole
+// text: a body written in Chinese, or one a rune cut at the window's
+// start, is read the same way and as cheaply.
 func missingModuleAt(s string, a, b int) bool {
 	if a == 0 || b >= len(s) || !strings.ContainsRune("'\"`", rune(s[a-1])) || s[b] != s[a-1] {
 		return false
 	}
-	e := a - 1
-	before := s[max(0, e-64):e]
-	if !isASCII(before) {
-		before = s[:e]
-	}
-	q := strings.ToLower(strings.TrimRight(before, " \t"))
+	t := strings.TrimRight(s[:a-1], " \t")
+	q := strings.ToLower(t[max(0, len(t)-64):])
 	for _, w := range []string{"find module", "find package", "module named", "resolve", "resolve import", "resolve module"} {
 		if wordEnd(q, w) {
 			return true
