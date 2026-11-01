@@ -67,6 +67,18 @@ run was offered it. `subscriptionRun.names` (`bridgeNames`) maps it back
 to the declared name in `toolStart`, for streamed and whole messages, and
 in `mcpCall` (#2649).
 
+A turn with `tool_choice` none is offered every tool the client sent, as
+any other turn is (bbfatx on X). Anthropic caches a prompt as tools, then
+system, then messages, so a turn offered fewer tools (a title or summary
+asked with the tools as ever) was a prefix the cache had never seen, and
+all of it, Claude Code's own tools and system prompt included, was written
+again. What a turn may call is kept apart from what it is offered:
+`subscriptionRun.allowed`, set at start, on resume and with tool results.
+A call the turn makes anyway is answered at once with an error result
+(`mcpCall`), `toolStart` treats it as Claude Code's own call, and the
+client never sees it. A named `tool_choice` still offers only that tool.
+`TestClaudeToolChoiceNoneKeepsTheTools` holds it.
+
 The run's MCP server is magpie itself (`magpie claude-mcp-helper`,
 `internal/claudebridge`), which hands each tool call back to the gateway
 at `POST /_magpie/claude-mcp/<token>` (`mcpCall`), where the call is
@@ -244,9 +256,9 @@ A run is `-p`, as before, when (`claudeTUI`):
   known only by its URL (`urlImages`: the helper pastes files, and has no
   bytes of it), or words over 400KB (`tuiPromptMost`, images not counted),
   which a paste can't carry as `-p` does;
-- it is a branch of another run's session (`branch`: see
-  [Tool results another request answers first](#tool-results-another-request-answers-first)),
-  which the helper can't resume, as it takes `--resume` as its own session.
+- it is a branch of a `-p` run's session (`branch`: see
+  [Tool results another request answers first](#tool-results-another-request-answers-first));
+  a branch of an interactive run's session is interactive too.
 
 The gateway's log says which (`claude: this run is -p: …`,
 `claudePrintWhy`), and the helper's own line when it becomes `-p` (below)
@@ -457,7 +469,10 @@ history to the 1h cache at 2×.
    Code could not go on from the conversation's saved session". Before,
    the turn got 502 "Claude Code ended" with the safety context set, and
    an empty reply without it.
-3. `retire`, then a new run told the whole conversation. When it has
+3. `retire`, then a new run told the whole conversation. `retire` takes
+   the request: an aside of a run that was told tools (`asideOf`: a
+   title or summary asked between turns with `tool_choice` none or with
+   no tools) doesn't let go of the run the conversation waits in. When it has
    replies in it, the turns already answered are wrapped in
    `<conversation_history>`, with a note that the images and files in them
    were sent with those messages, and the turn to answer (from the message
@@ -514,6 +529,21 @@ run for the whole session, and the turn after each suggestion went on
 from the reply before it. Other side requests that go on from the
 conversation (extract_memories, away_summary, /btw) take the same path;
 they weren't tried.
+
+An interactive run can't be rewound: the interactive mode ignores
+`--resume-session-at`. Each run keeps the uuid of the last session line it
+wrote (`lastLine`, from `noteLines`), the one it had before each turn
+(`backLine`), and, once it went on with a side question, the one before
+it (`behindLine`, beside `behindKey`). A turn that finds an interactive
+run behind a side question cuts a copy of its session at `behindLine`
+before the run is let go and its file removed (`branchAt`, a cut copy as
+in [Tool results another request answers first](#tool-results-another-request-answers-first)),
+and a new interactive run resumes the copy, told only the turn's
+messages. Before, every turn after a suggestion was told whole to a new
+run (bbfatx on X). There is no cut with a client's own cache marks, with
+an image known only by its URL, or for a run with no session or no line;
+then the turn is told whole, as before.
+`TestClaudeInteractiveSideQuestionBranchesBeforeIt` holds it.
 
 A turn after a reply that starts a new run logs why none waited
 (`whyNoRun`, "claude: no run waits for this turn: …"): its run went on
@@ -639,6 +669,12 @@ session's. The request matches one when all of these hold:
   only these changed (`looseTurn.rewrote`):
   - a user message had one part taken out (`cutFrom`), not all of it;
   - the reply is a non-empty start of what the run said.
+
+An aside of a run that was told tools (`asideOf`, above) is never taken
+as rewritten: `looseTurn`'s key has no tools, so a title asked with no
+tools looked like the conversation rewritten, and the conversation's run
+went on with it and waited at the title afterwards (bbfatx on X).
+`TestClaudeAsideLeavesTheConversationsRun` holds both.
 
 It is taken only when exactly one run or saved session matches. Two that
 could be it are two conversations alike as far as their words go, and a
@@ -918,20 +954,32 @@ was written: the uuid on Claude Code's `assistant` line (`noteLines`). As
 it parks on them, it also keeps the conversation those calls answered
 (`historyKey`, set in `park`). A request no run takes, whose last reply's
 calls a live run of the same owner made, from the same conversation, goes
-on in a branch of that run's session. It is a `-p` run (`branch` in
-`claudePrint`) with `--resume <session> --fork-session
---resume-session-at <uuid>`. That is a copy of the session cut after the
-reply, as Claude Code asked it of Anthropic, so it reads the lead's cache.
-It is told only the results and what came after, as a turn after an
-unshelve is. The lead's session file stays the lead's, and the branch's id
-comes from its own init. Claude Code 2.1.316 was checked on mote with the
-real binary: `--resume-session-at` cuts there even after the lead went on,
-and the copy works while the lead's process still holds the session.
+on in a branch of that run's session. The branch's run copies the
+session's lines up to the reply's uuid into a session file of its own
+next to it, its `sessionId` set to the copy's id (`cutSession`, which waits
+up to `cutWait` for that line to be whole), and starts with
+`--resume <copy>` in the mode its source run had (`savedSession.tui`):
+interactive for an interactive run, `-p` for a `-p` one (`branch` in
+`claudePrint` is only for the latter). Claude Code's own
+`--fork-session --resume-session-at` cut is not used, as the interactive
+mode ignores `--resume-session-at` and resumes the whole session, and a
+`-p` branch of an interactive run's session read only tools and system from
+the cache (the prompts differ; measured on mote with 30 MCP tools). The
+copy is Claude Code's session as it asked it of Anthropic, so it reads the
+lead's cache: with the real Claude Code 2.1.316 on mote, a cut copy
+resumed interactively read 7648 tokens and wrote 14, and with `-p` read
+24009 and wrote 13. The translator passes each interactive assistant row's
+uuid through (`TestTranslatorTellsTheRowsUUID`), so an interactive run's
+lines can be cut. It is told only the results and what came after, as a
+turn after an unshelve is. The lead's session file stays the lead's, and
+the branch owns its copy, as an unshelved run owns its session.
 Calls it answered nothing for get a synthetic error result. There is no
-branch with a client's own cache marks, in interactive-only mode, from a
-run that was rewound, closed or has no session, or when the conversation
-before the reply isn't the one the run answered. Then, and when the resume
-fails, the run is told the whole conversation as before.
+branch with a client's own cache marks, of a `-p` run under Interactive
+only, from a run that was rewound, closed or has no session (Windows and
+WSL keep none on disk), or when the conversation before the reply isn't
+the one the run answered. Then, and when the cut or the resume fails, the
+run is told the whole conversation as before.
+`TestClaudeCutSessionCopiesAsFarAsTheLine` and
 `TestClaudeForkBranchesOffTheLeadsSession` holds it.
 
 ## The user's words beside tool results (#872, #1878)
@@ -1125,7 +1173,7 @@ go test -tags nogui ./internal/gateway/ -run 'TestClaudeRunsHeldToTheRoom|TestCl
 go test -tags nogui ./internal/cli/ -run '^TestClaudeCodeRuns' -count=1
 go test -tags nogui ./internal/gateway/ -run '^TestClaudeRunsNamesEachProcess$' -count=1
 go test -tags nogui ./internal/settings/ -run '^TestClaudeRunsMostIsMachineLocal$' -count=1
-go test -tags nogui ./internal/gateway/ -run 'ClaudeSubscriptionRunsTheDownloaded|ClaudeSubscriptionWithoutClaudeCode|ClaudeRewritten|LostMedia|ImagesTakenOut|RunLetGoWhenTheClientRewrote|ClaudeSessionTempFiles|ClaudeLetGo|ClaudeSessionFiles|ClaudeOldSessions|ClaudeSubscriptionReplySaysTheAllowance|ClaudeAllowanceHeaders|ClaudeForksAnsweringTheLeadsCalls|ClaudeTurnGivenUpOn|ClaudeToolResultsGivenUpOn|ClaudePromptMarksEarlierTurns|ClaudeHistoryCachedAcrossNewRuns|ClaudeUnloadableSession|ClaudeEndedRunSaysWhy|ClaudeIdle|ClaudeSideQuestion|ClaudeNoRunSaysWhy|ClaudeToolResultsNoRunSaysWhy|ClaudePromptToldUserText|ClaudePromptKeepsInstructions|ClaudeToolResultsGoOnWithTheUsersWords|ClaudeToolResultsKeepInstructions|ToolResultKeepsUserTextSentMidTurn|ClaudeTextToolCalls|ClaudeTextCallsHoldsOnlyTheLine|ClaudePromptSaysPastCallsAreARecord' -count=1
+go test -tags nogui ./internal/gateway/ -run 'ClaudeSubscriptionRunsTheDownloaded|ClaudeSubscriptionWithoutClaudeCode|ClaudeRewritten|LostMedia|ImagesTakenOut|RunLetGoWhenTheClientRewrote|ClaudeSessionTempFiles|ClaudeLetGo|ClaudeSessionFiles|ClaudeOldSessions|ClaudeSubscriptionReplySaysTheAllowance|ClaudeAllowanceHeaders|ClaudeForksAnsweringTheLeadsCalls|ClaudeTurnGivenUpOn|ClaudeToolResultsGivenUpOn|ClaudePromptMarksEarlierTurns|ClaudeHistoryCachedAcrossNewRuns|ClaudeUnloadableSession|ClaudeEndedRunSaysWhy|ClaudeIdle|ClaudeSideQuestion|ClaudeInteractiveSideQuestion|ClaudeCutSession|ClaudeForkBranches|ClaudeToolChoiceNone|ClaudeAside|ClaudeNoRunSaysWhy|ClaudeToolResultsNoRunSaysWhy|ClaudePromptToldUserText|ClaudePromptKeepsInstructions|ClaudeToolResultsGoOnWithTheUsersWords|ClaudeToolResultsKeepInstructions|ToolResultKeepsUserTextSentMidTurn|ClaudeTextToolCalls|ClaudeTextCallsHoldsOnlyTheLine|ClaudePromptSaysPastCallsAreARecord' -count=1
 go test -tags nogui ./internal/gateway/ -run 'TestClaudeTaskNotification|TestWithTaskNotices|TestClaudeTurnToldTheTaskNotification' -count=1
 ```
 
