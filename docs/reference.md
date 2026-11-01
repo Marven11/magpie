@@ -893,6 +893,12 @@ same model on the Qwen AI platform's pay as you go is `qwen-decision`
 Neither plan has an API for its credits: the console's subscription page
 shows them, so magpie shows no plan usage for these keys.
 
+Volcengine Ark's System One API, in beta, is `volcengine-decision`: an Ark
+API key, asked at `https://ark.cn-beijing.volces.com/api/v1/systemone` with
+the `ark-beta-systemone-api: true` header magpie adds on Ark's host, and its
+one decision model `doubao-seed-2-1-lite-260915`. The Coding and Agent
+Plans' paths don't serve it, so it bills as pay as you go.
+
 Qwen Cloud (qwencloud.com), Alibaba's international Qwen platform, has keys
 of its own, made at home.qwencloud.com. Its pay as you go is `qwencloud`,
 at `{region}.maas.qwencloudapi.com` in six regions (`ap-southeast-1`, the
