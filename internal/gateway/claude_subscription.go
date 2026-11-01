@@ -3909,7 +3909,20 @@ func bridgeName(name string) string {
 // change, or one ending as a changed name ends, is told apart by a hash of
 // it, the same in every run, so a resumed session and a conversation's
 // history name the tool as before; declaredName maps it back.
+//
+// A tool of magpie's own MCP server, which the client (Claude Code with
+// magpie's Library) already names mcp__magpie__<server>__<tool>, is
+// offered under the rest of its name: with the helper's mcp__magpie__
+// before it again, the run's model was shown
+// mcp__magpie__mcp__magpie__magpie-browser__browser_click, while a
+// deferred tool the client named in its text kept the single prefix
+// (packinggoods on Discord, 11-01). The model now sees the client's own
+// name. A client offering both "mcp__magpie__x" and a bare "x" would
+// have the two offered alike, which this doesn't tell apart.
 func bridgeToolName(name string) string {
+	if rest, ok := strings.CutPrefix(name, "mcp__magpie__"); ok && bridgeToolNameOK.MatchString(rest) && !bridgeToolNameHashed.MatchString(rest) {
+		return rest
+	}
 	if bridgeToolNameOK.MatchString(name) && !bridgeToolNameHashed.MatchString(name) {
 		return name
 	}
