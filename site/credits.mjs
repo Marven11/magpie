@@ -14,8 +14,9 @@
 // counts only when it is shaped like a handle with digits ("mrwl666") or the
 // same name is credited plainly somewhere else ("axelburks on Discord").
 //
-// Used by credits-cli.mjs for the release notes' thanks line. It imports
-// nothing, so the site's worker can use it too.
+// Used by credits-cli.mjs (the release notes' thanks line, and
+// public/contributors.json at deploy) and by worker.js (the contributors
+// page). It imports nothing, so the worker can bundle it.
 
 export const MAINTAINERS = ["yetone"];
 // agents and bots that author or co-author commits
@@ -210,4 +211,80 @@ export function thanks(people, lang) {
   }
   const list = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names.at(-1) : names[0];
   return `Thanks to ${list}, whose reports and code went into this release. Everyone who helped: [contributors](${WALL.en}).`;
+}
+
+// The subject as the page shows it: its first part, without the brackets
+// that only credit or number it.
+export function what(subject) {
+  let s = String(subject).split(" — ")[0];
+  s = s.replace(/\s*\(([^()]*)\)/g, (all, inner) => {
+    const one = { names: [], refs: [] };
+    group(inner, one);
+    return one.names.length || one.refs.length ? "" : all;
+  }).trim();
+  return s.length > 200 ? s.slice(0, 199) + "…" : s;
+}
+
+// --- the contributors page ---
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const WORDS = {
+  en: { name: "Who", led: "What came of it, newest first", more: (n) => `${n} more`, none: "The list isn't available right now." },
+  zh: { name: "谁", led: "带来的改动，新的在前", more: (n) => `还有 ${n} 项`, none: "名单暂时无法显示。" },
+  ja: { name: "誰が", led: "そこから生まれた変更（新しい順）", more: (n) => `ほか ${n} 件`, none: "一覧は今は表示できません。" },
+};
+const SHOWN = 3;
+const RELEASE = (v) => `https://github.com/yetone/magpie-releases/releases/tag/v${encodeURIComponent(v)}`;
+
+// The table the page shows from contributors.json's data.
+export function renderWall(data, lang) {
+  const w = WORDS[lang] || WORDS.en;
+  const people = data && Array.isArray(data.people) ? data.people : [];
+  if (!people.length) return `<p>${esc(w.none)}</p>`;
+  const line = (r) => r.what.map((t) => `<li><a href="${RELEASE(r.v)}"><code>v${esc(r.v)}</code></a> ${esc(t)}</li>`).join("");
+  const rows = people.map((p) => {
+    const name = p.github ? `<a href="https://github.com/${encodeURIComponent(p.github)}">${esc(p.name)}</a>` : esc(p.name);
+    const via = (p.via || []).length ? `<br><span class="cw-via">${p.via.map(esc).join(" · ")}</span>` : "";
+    const items = [];
+    for (const r of p.releases || []) for (const t of r.what || []) items.push({ v: r.v, what: [t] });
+    const head = items.slice(0, SHOWN).map(line).join("");
+    const rest = items.slice(SHOWN);
+    const more = rest.length ? `<details><summary>${esc(w.more(rest.length))}</summary><ul>${rest.map(line).join("")}</ul></details>` : "";
+    return `<tr><td><b>${name}</b>${via}</td><td><ul>${head}</ul>${more}</td></tr>`;
+  }).join("");
+  return `<div class="table-wrap"><table class="cw"><thead><tr><th>${esc(w.name)}</th><th>${esc(w.led)}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+const vnum = (v) => String(v).split(".").map((x) => parseInt(x, 10) || 0);
+export function newer(a, b) {
+  const x = vnum(a), y = vnum(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
+
+// contributors.json's people from released commits ({ ...commit, v }):
+// each person with the versions their reports led to, newest first.
+export function wall(commits, opts) {
+  const per = credit(commits, opts);
+  const all = new Map();
+  commits.forEach((c, i) => {
+    if (!c.v) return;
+    for (const p of per[i]) {
+      let e = all.get(p.key);
+      if (!e) all.set(p.key, (e = { name: p.name, via: [], github: "", byV: new Map() }));
+      for (const v of p.via) if (!e.via.includes(v)) e.via.push(v);
+      if (p.github) e.github = p.github;
+      if (!e.byV.has(c.v)) e.byV.set(c.v, []);
+      const t = what(c.subject);
+      if (t && !e.byV.get(c.v).includes(t)) e.byV.get(c.v).push(t);
+    }
+  });
+  const people = [...all.values()].map((e) => {
+    const releases = [...e.byV.entries()].map(([v, w]) => ({ v, what: w })).sort((a, b) => (newer(a.v, b.v) ? -1 : newer(b.v, a.v) ? 1 : 0));
+    const out = { name: e.name, via: e.via, releases };
+    if (e.github) out.github = e.github;
+    return out;
+  });
+  people.sort((a, b) => (newer(a.releases[0].v, b.releases[0].v) ? -1 : newer(b.releases[0].v, a.releases[0].v) ? 1 : lower(a.name) < lower(b.name) ? -1 : 1));
+  return people;
 }

@@ -2,7 +2,7 @@
 // one from yetone/magpie's own history, word for word.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parse, credit, everyone, thanks } from "./credits.mjs";
+import { parse, credit, everyone, thanks, what, wall, renderWall } from "./credits.mjs";
 import { authors, excluded } from "./credits-cli.mjs";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -91,6 +91,8 @@ test("commit authors and co-authors are credited, agents and machines not, and n
 test("the exclusion list leaves a person out everywhere", () => {
   const s = "library: an MCP router says which computer it is, so an agent can pick between two (packinggoodsllc_07668 on Discord)";
   assert.deepEqual(names(s, { exclude: ["PackingGoodsLLC_07668"] }), []);
+  const commits = [{ subject: s, v: "0.1.2569" }];
+  assert.deepEqual(wall(commits, { exclude: ["packinggoodsllc_07668"] }), []);
   assert.deepEqual(excluded(), []); // the checked-in list has comments only
   const dir = mkdtempSync(join(tmpdir(), "credits-"));
   try {
@@ -111,6 +113,25 @@ test("the release notes' thanks line, in English and Chinese", () => {
   assert.equal(thanks(people.slice(0, 1), "en").startsWith("Thanks to packinggoodsllc\\_07668, whose"), true);
   assert.match(thanks(people.slice(0, 1), "zh"), /里有你的/);
   assert.equal(thanks([], "en"), "");
+});
+
+test("the page shows what each person's reports led to, newest first", () => {
+  assert.equal(what("redact: a decimal's digits are not masked as a number of their own (willz, Discord)"), "redact: a decimal's digits are not masked as a number of their own");
+  assert.equal(what("plugin: gateway key limits are the Key limits plugin on the gateway's budget point (P3)"), "plugin: gateway key limits are the Key limits plugin on the gateway's budget point (P3)");
+  const people = wall([
+    { subject: "search: searchers picked to follow the one named, tried in their order when it fails (axelburks on Discord)", v: "0.1.2561" },
+    { subject: "gui: Busy models last takes a custom threshold, 1 to 9999 (axelburks)", v: "0.1.2564" },
+    { subject: "redact: a decimal's digits are not masked as a number of their own (willz, Discord)", v: "0.1.2560" },
+  ]);
+  assert.deepEqual(people.map((p) => [p.name, p.releases.map((r) => r.v)]), [["axelburks", ["0.1.2564", "0.1.2561"]], ["willz", ["0.1.2560"]]]);
+  const html = renderWall({ people: [{ name: "<b>x</b>", via: ["Discord"], github: "x", releases: [{ v: "0.1.1", what: ["a & b"] }] }] }, "zh");
+  assert.match(html, /&lt;b&gt;x&lt;\/b&gt;/);
+  assert.match(html, /a &amp; b/);
+  assert.match(html, /releases\/tag\/v0\.1\.1/);
+  assert.match(html, /新的在前/);
+  assert.match(renderWall({}, "ja"), /一覧/);
+  const many = renderWall({ people: [{ name: "n", releases: [1, 2, 3, 4, 5].map((i) => ({ v: `0.1.${i}`, what: ["w"] })) }] }, "en");
+  assert.match(many, /<summary>2 more<\/summary>/);
 });
 
 test("issue authors GitHub can't give are left out, not guessed", async () => {

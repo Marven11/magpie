@@ -6,16 +6,22 @@
 //     Chinese on the second, nothing when no one is credited. yetone/
 //     magpie-releases' release run calls it for the commits since the last
 //     tag.
+//   node site/credits-cli.mjs wall [out]
+//     public/contributors.json (or out) from every tag's commits, and the
+//     contributors page's table in each language beside it
+//     (public/contributors/en.html, zh, ja), which worker.js puts into the
+//     page. wrangler.jsonc's build runs it at each deploy.
 //
 // The issue and PR authors a subject's "(#N)" names are asked of GitHub's
 // GraphQL API with GH_TOKEN, GITHUB_TOKEN or `gh auth token`. When that
-// can't be read, those people are left out; the rest still goes out. Names in
+// can't be read, those people are left out (and `wall` keeps the authors
+// its last output knew); the rest still goes out. Names in
 // contributors-exclude.txt are never given.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { credit, everyone, thanks, refKey, parse } from "./credits.mjs";
+import { credit, everyone, thanks, wall, refKey, parse, renderWall } from "./credits.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const warn = (m) => process.stderr.write(`credits: ${m}\n`);
@@ -101,8 +107,41 @@ async function cmdThanks(range) {
   if (en) process.stdout.write(en + "\n" + thanks(people, "zh") + "\n");
 }
 
+async function cmdWall(out = join(here, "public", "contributors.json")) {
+  let before = {};
+  try { before = JSON.parse(readFileSync(out, "utf8")); } catch {}
+  let commits;
+  try {
+    commits = log(["--topo-order", "--reverse", "--decorate-refs=refs/tags/v*", "HEAD"]);
+  } catch (e) {
+    warn(`git log failed (${e.message.split("\n")[0]}); ${existsSync(out) ? "the last list is kept" : "no list is written"}`);
+    return;
+  }
+  // a commit goes out in the first tag at or after it
+  let pending = [];
+  for (const c of commits) {
+    pending.push(c);
+    if (c.tags.length) {
+      const v = c.tags.map((t) => t.slice(1)).sort((a, b) => a.localeCompare(b, "en", { numeric: true }))[0];
+      for (const p of pending) p.v = v;
+      pending = [];
+    }
+  }
+  const released = commits.filter((c) => c.v && c.parents < 2);
+  const refs = released.flatMap((c) => parse(c.subject).refs);
+  const issueAuthors = await authors(refs, { known: before.issueAuthors || {} });
+  const people = wall(released, { issueAuthors, exclude: excluded() });
+  const data = { generated: new Date().toISOString(), head: commits.length ? commits.at(-1).sha : "", issueAuthors, people };
+  const put = (file, text) => { writeFileSync(file + ".tmp", text); renameSync(file + ".tmp", file); };
+  put(out, JSON.stringify(data) + "\n");
+  const dir = join(dirname(out), "contributors");
+  mkdirSync(dir, { recursive: true });
+  for (const lang of ["en", "zh", "ja"]) put(join(dir, `${lang}.html`), renderWall(data, lang) + "\n");
+  warn(`${people.length} people over ${released.length} released commits → ${out}`);
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const [cmd, arg] = process.argv.slice(2);
-  const run = cmd === "thanks" ? cmdThanks(arg) : Promise.reject(new Error("usage: credits-cli.mjs thanks <from>..<to>"));
-  run.catch((e) => { warn(e.message); process.exit(1); });
+  const run = cmd === "thanks" ? cmdThanks(arg) : cmd === "wall" ? cmdWall(arg) : Promise.reject(new Error("usage: credits-cli.mjs thanks <range> | wall [out]"));
+  run.catch((e) => { warn(e.message); process.exit(cmd === "wall" ? 0 : 1); });
 }
