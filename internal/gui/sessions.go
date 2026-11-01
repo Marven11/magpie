@@ -122,40 +122,44 @@ func sessionRoutes(mux *http.ServeMux, w Windows) {
 		for _, g := range gateway {
 			ext = append(ext, gatewayListed(g, title))
 		}
-		list = sessions.MergeExternal(list, ext)
-		if len(list) > n {
-			list = list[:n]
-		}
-		var modelEffort map[string][]sessions.ModelEffort
-		for _, s := range list {
-			if s.Agent == "codex" {
-				modelEffort = usage.CodexModelEffort(usage.All)
-				break
+		// made to size: up to sessions.All rows, grown by append each poll
+		// was copied through every size on the way, ~140 MB of eight (#2278).
+		// The rows are made from the list and the gateway's sessions as
+		// they merge, not from a merged copy of the list.
+		out.Sessions = make([]sessionJSON, 0, min(n, len(list)+len(ext)))
+		codex := false
+		sessions.EachMerged(list, ext, func(s *sessions.Session) bool {
+			if len(out.Sessions) == n {
+				return false
 			}
-		}
-		for i := range list {
-			addCodexModelEffort(&list[i], modelEffort)
+			codex = codex || s.Agent == "codex"
+			out.Sessions = append(out.Sessions, sessionJSON{Session: *s})
+			return true
+		})
+		var modelEffort map[string][]sessions.ModelEffort
+		if codex {
+			modelEffort = usage.CodexModelEffort(usage.All)
 		}
 		since := time.Now()
-		for _, s := range list {
+		for i := range out.Sessions {
+			s := &out.Sessions[i].Session
+			addCodexModelEffort(s, modelEffort)
 			if !s.Start.IsZero() && s.Start.Before(since) {
 				since = s.Start
 			}
 		}
 		vias := usage.Vias(since.Add(-time.Minute))
-		// made to size: up to sessions.All rows, grown by append each poll
-		// was copied through every size on the way, ~140 MB of eight (#2278)
-		out.Sessions = make([]sessionJSON, 0, len(list))
-		for _, s := range list {
+		for i := range out.Sessions {
+			j := &out.Sessions[i]
+			s := j.Session
 			// drawn as the agent it ran in: Claude Desktop's Code tab's
 			// sessions are in Claude Code's folder (Session.App)
-			j := sessionJSON{Session: s, Name: s.Agent, Icon: "generic", Via: viaOf(vias, s)}
+			j.Name, j.Icon, j.Via = s.Agent, "generic", viaOf(vias, s)
 			if a := agents[cmp.Or(s.App, s.Agent)]; a != nil {
 				j.Name, j.Icon = a.SharedName(), a.Icon
 			}
 			j.Name = wslName(j.Name, s)
 			j.Path = tilde(j.Path)
-			out.Sessions = append(out.Sessions, j)
 		}
 		writeJSONRows(rw, r, "sessions", out.Sessions, struct {
 			Terminal bool     `json:"terminal"`
