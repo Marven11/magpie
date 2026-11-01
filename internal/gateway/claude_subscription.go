@@ -5864,6 +5864,14 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 				msg = head[n-1].Text
 			}
 			abort()
+			// what Anthropic said the reply's start used, the conversation
+			// written to the account's cache, is the failed try's, kept
+			// with its row when the request goes on to another (serve)
+			for _, ev := range head {
+				if ev.Kind == KStart || ev.Kind == KUsage {
+					usage.add(ev.Usage)
+				}
+			}
 			code := 502
 			if n > 0 {
 				usage.add(Usage{ErrType: head[n-1].Code, RequestID: head[n-1].RequestID})
@@ -5929,7 +5937,9 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 	}
 	if col.err != "" && !saidAnything(col.res.Parts) {
 		abort()
-		// a status, as in a stream, so another account can take over
+		// a status, as in a stream, so another account can take over;
+		// what the reply's start used is the failed try's
+		usage.add(col.res.Usage)
 		usage.add(Usage{ErrType: col.errCode})
 		code, msg := bridgeFailed(name, col.err, col.errStatus)
 		return writeError(w, from, code, name+": "+msg), msg
