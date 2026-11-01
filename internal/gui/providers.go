@@ -827,7 +827,12 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 	// Discord, Windows)
 	set := held
 	noAPI := p.NoAPI()
+	// each model's provider/model ref, made once: the settings' maps and
+	// every agent's hidden list are looked up by it
+	var refs []string
 	named := func(m catalog.Model, on bool) modelJSON {
+		ref := p.ID + "/" + m.ID
+		refs = append(refs, ref)
 		images := m.Images || catalog.SeesImages(m.ID)
 		if m.ImageInput != nil {
 			images = *m.ImageInput
@@ -857,15 +862,15 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 			}
 		}
 		j.NoAPI = noAPI(m.ID)
-		j.Same = sames[p.ID+"/"+m.ID]
+		j.Same = sames[ref]
 		if own := p.OwnModelID(m.ID); own != m.ID {
 			j.Vendor = own
 		}
 		j.IDs = p.TakesModelIDs()
 		j.Kind = p.ModelKind(m.ID)
 		j.Merge = provider.MergeName(m.ID)
-		j.Desktop = desktop[p.ID+"/"+m.ID]
-		if mp, ok := held.ModelPrices[p.ID+"/"+m.ID]; ok {
+		j.Desktop = desktop[ref]
+		if mp, ok := held.ModelPrices[ref]; ok {
 			if pr, bad := mp.Price(); bad == "" {
 				j.Price = &pr
 			}
@@ -932,6 +937,7 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 		}
 	}
 	out.Models = make([]modelJSON, 0, len(front)+len(avail)+len(unlisted))
+	refs = make([]string, 0, cap(out.Models))
 	for i := len(front) - 1; i >= 0; i-- {
 		out.Models = append(out.Models, named(front[i], true))
 	}
@@ -971,8 +977,8 @@ func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUs
 			}
 		}
 		if a.off != nil {
-			for _, m := range out.Models {
-				if a.off(p.ID + "/" + m.ID) {
+			for i, m := range out.Models {
+				if a.off(refs[i]) {
 					pa.Hides = append(pa.Hides, m.ID)
 				}
 			}
