@@ -24,6 +24,7 @@ const inhouse = {
     { id: "big", name: "Big", on: false, load: 87.4 },
     { id: "small", name: "Small", on: false, load: 0 },
     { id: "quiet", name: "Quiet", on: false },
+    { id: "queued", name: "Queued", on: false, load: 180.2 },
   ],
   chosen: [], fetched, agents: [], fallback: [], headers: {},
   key: { set: true, masked: "sk-…one" }, keyList: [], balanceToken: { takes: false, set: false }, proxy: "",
@@ -75,11 +76,11 @@ function server(lang, posted, over = {}) {
 }
 
 const want = {
-  en: { busy: "87% busy now, as its plugin says", idle: "0% busy now, as its plugin says", name: "Busy models last", off: "Off", over: (n) => `Over ${n}%`, sub: "last 5 minutes" },
-  zh: { busy: "插件报告当前负载 87%", idle: "插件报告当前负载 0%", name: "繁忙的模型靠后", off: "关闭", over: (n) => `高于 ${n}%`, sub: "5 分钟" },
-  "zh-TW": { busy: "外掛回報目前負載 87%", idle: "外掛回報目前負載 0%", name: "繁忙的模型靠後", off: "關閉", over: (n) => `高於 ${n}%`, sub: "5 分鐘" },
-  ja: { busy: "プラグインの報告では現在 87% の負荷", idle: "プラグインの報告では現在 0% の負荷", name: "混雑しているモデルを後回しに", off: "オフ", over: (n) => `${n}% 超`, sub: "5 分間" },
-  de: { busy: "laut seinem Plugin gerade zu 87 % ausgelastet", idle: "laut seinem Plugin gerade zu 0 % ausgelastet", name: "Ausgelastete Modelle zuletzt", off: "Aus", over: (n) => `Über ${n} %`, sub: "5 Minuten" },
+  en: { busy: "87% busy now, as its plugin says", queued: "180% busy now, as its plugin says", idle: "0% busy now, as its plugin says", name: "Busy models last", off: "Off", over: (n) => `Over ${n}%`, sub: "last 5 minutes" },
+  zh: { busy: "插件报告当前负载 87%", queued: "插件报告当前负载 180%", idle: "插件报告当前负载 0%", name: "繁忙的模型靠后", off: "关闭", over: (n) => `高于 ${n}%`, sub: "5 分钟" },
+  "zh-TW": { busy: "外掛回報目前負載 87%", queued: "外掛回報目前負載 180%", idle: "外掛回報目前負載 0%", name: "繁忙的模型靠後", off: "關閉", over: (n) => `高於 ${n}%`, sub: "5 分鐘" },
+  ja: { busy: "プラグインの報告では現在 87% の負荷", queued: "プラグインの報告では現在 180% の負荷", idle: "プラグインの報告では現在 0% の負荷", name: "混雑しているモデルを後回しに", off: "オフ", over: (n) => `${n}% 超`, sub: "5 分間" },
+  de: { busy: "laut seinem Plugin gerade zu 87 % ausgelastet", queued: "laut seinem Plugin gerade zu 180 % ausgelastet", idle: "laut seinem Plugin gerade zu 0 % ausgelastet", name: "Ausgelastete Modelle zuletzt", off: "Aus", over: (n) => `Über ${n} %`, sub: "5 Minuten" },
 };
 const view = (page) => page.locator("#view-settings").evaluate((v) => v.scrollTop);
 
@@ -115,7 +116,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           const b = [...c.querySelectorAll(".badge")].find((x) => /%$/.test(x.textContent));
           return [c.querySelector("span").textContent, b ? [b.textContent, b.title] : null];
         }));
-        assert.deepEqual(chips, [["Big", ["87%", w.busy]], ["Small", ["0%", w.idle]], ["Quiet", null]]);
+        assert.deepEqual(chips, [["Big", ["87%", w.busy]], ["Small", ["0%", w.idle]], ["Quiet", null], ["Queued", ["180%", w.queued]]]);
+        // past 100 for a vendor that queues: the badge holds it on one line
+        const q = await editor.locator(".mchip .badge", { hasText: "180%" }).evaluate((b) => [b.scrollWidth <= b.clientWidth + 1, b.getClientRects().length]);
+        assert.deepEqual(q, [true, 1]);
         // grey and small as the context badge, no colour of its own
         const look = await editor.locator(".mchip .badge", { hasText: "87%" }).evaluate((b) => {
           const s = getComputedStyle(b), ctx = document.createElement("span");
@@ -169,6 +173,21 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     }
   }
 }
+
+test("a threshold past 100 set by hand is shown as picked", async (t) => {
+  const page = await open(process.env.BROWSER || "chromium", 420, t, "busy-load-150");
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.route("**/*", server("en", [], { busyLoad: 150 }));
+  await page.goto("http://magpie.test/?view=settings&tab=network");
+  const segs = page.locator("#busyLoadSegs .opt");
+  await segs.first().waitFor();
+  assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), ["Off", "Over 50%", "Over 70%", "Over 80%", "Over 90%", "Over 150%"]);
+  assert.equal((await page.locator("#busyLoadSegs .opt.on").textContent()).trim(), "Over 150%");
+  const rb = await page.locator("#busyLoadRow").boundingBox(), sb = await page.locator("#busyLoadSegs").boundingBox();
+  assert(sb.x + sb.width <= rb.x + rb.width + 1, "the switch runs out of its row");
+  assert.deepEqual(errors, []);
+});
 
 test("a threshold set by hand is shown as picked", async (t) => {
   const page = await open(process.env.BROWSER || "chromium", 900, t, "busy-load-own");

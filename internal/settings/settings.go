@@ -475,7 +475,8 @@ type Settings struct {
 	ClassifyTimeout int `json:"classifyTimeout,omitempty"`
 	// BusyLoad puts a model whose plugin reports it busier than this
 	// percent behind the others it could go to (plugin.ModelLoad,
-	// axelburks on Discord): from 1 to 99, 0 for off. A model with no
+	// axelburks on Discord): from 1 to BusyLoadMost-1, past 100 for a
+	// vendor that queues, 0 for off. A model with no
 	// load reported, or one older than plugin.LoadFresh, keeps its place.
 	BusyLoad int `json:"busyLoad,omitempty"`
 	// Searcher is the provider that searches the web for a model that
@@ -1115,6 +1116,10 @@ func (s Settings) ResetLead() time.Duration {
 	}
 	return time.Duration(m) * time.Minute
 }
+
+// BusyLoadMost is past the highest BusyLoad: plugin.LoadMost, the most a
+// plugin's reported load is kept at, so a threshold at it moves nothing.
+const BusyLoadMost = 10000
 
 // ClassifyTimeoutDefault is the seconds a classifier is given when
 // ClassifyTimeout is 0, and ClassifyTimeoutMost the most it can be set to:
@@ -1965,8 +1970,8 @@ func saveOwn(s Settings, recording, reads bool) error {
 	if s.ClassifyTimeout < 0 || s.ClassifyTimeout > ClassifyTimeoutMost {
 		return fmt.Errorf("a routing group's classifier is given from 1 to %d seconds, or 0 for %d, not %d", ClassifyTimeoutMost, ClassifyTimeoutDefault, s.ClassifyTimeout)
 	}
-	if s.BusyLoad < 0 || s.BusyLoad > 99 {
-		return fmt.Errorf("busy models go last over a load from 1 to 99%%, or 0 for off, not %d", s.BusyLoad)
+	if s.BusyLoad < 0 || s.BusyLoad >= BusyLoadMost {
+		return fmt.Errorf("busy models go last over a load from 1 to %d%%, or 0 for off, not %d", BusyLoadMost-1, s.BusyLoad)
 	}
 	if s.UsageAlert < 0 || s.UsageAlert > 100 {
 		return fmt.Errorf("a usage alert is at a percentage from 1 to 100, or 0 for off, not %d", s.UsageAlert)

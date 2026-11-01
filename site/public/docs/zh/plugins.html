@@ -575,7 +575,7 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
     <p><code>streak</code> 是连续天数，<code>message</code> 原样显示。抛出异常，或返回的 outcome 不在上表里，都算 <code>failed</code>。它在账号的作用域里运行，所以用 <code>client.auth.set</code> 续期的 token 会存到这个账号。</p>
 
     <h2 id="load"><a class="anchor" href="#load">模型负载</a></h2>
-    <p>供应商在模型繁忙时会让请求排队的，插件可以用 <code>input.magpie.load(provider, loads)</code> 告诉 magpie 每个模型有多忙。这是 magpie 自己的接口，OpenCode 没有。<code>loads</code> 把模型 id 映射到 0 到 100 的百分比，或映射到 <code>null</code> 表示不再知道。插件按自己的节奏、用自己的定时器随时调用，magpie 不会来要。</p>
+    <p>供应商在模型繁忙时会让请求排队的，插件可以用 <code>input.magpie.load(provider, loads)</code> 告诉 magpie 每个模型有多忙。这是 magpie 自己的接口，OpenCode 没有。<code>loads</code> 把模型 id 映射到从 0 起的百分比，或映射到 <code>null</code> 表示不再知道。插件按自己的节奏、用自己的定时器随时调用，magpie 不会来要。</p>
     <div class="code">
       <span class="lang">plugin</span>
       <pre><span class="k">export default async</span> (input) =&gt; {
@@ -589,10 +589,10 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
 }</pre>
     </div>
     <ul>
-      <li><b>取值。</b>数字会被限制在 0–100；其他值（字符串、<code>NaN</code>）丢弃。模型 id 不区分大小写，<code>model@256k</code> 没单独报时用它所属模型的负载。一次最多 1000 个模型，返回收下的个数。provider 不是字符串，或 <code>loads</code> 不是对象，会抛出 <code>TypeError</code>。</li>
+      <li><b>取值。</b>100 表示供应商同时能服务的满载；会排队的供应商可以报超过 100 的值（200 是满载的两倍）。小于 0 按 0 算，大于 10000 按 10000 算（防止离谱的值）。其他值（字符串、<code>NaN</code>）丢弃。模型 id 不区分大小写，<code>model@256k</code> 没单独报时用它所属模型的负载。一次最多 1000 个模型，返回收下的个数。provider 不是字符串，或 <code>loads</code> 不是对象，会抛出 <code>TypeError</code>。</li>
       <li><b>时效。</b>每个模型的负载从报告它的那次调用起算五分钟有效，之后就是未知，绝不当作 0：插件不再报告时，它的模型保持原位。一次调用没提到的模型，保留上次的负载，直到它自己的五分钟到期。</li>
       <li><b>在哪显示。</b>供应商编辑页里模型旁边的灰色小数字。</li>
-      <li><b>路由。</b>在 设置 › 网络与共享 › 繁忙的模型靠后 选了阈值（默认关闭；可选高于 50、70、80 或 90%，或在 settings.json 里把 <code>busyLoad</code> 设为 1 到 99）后，报告负载高于它的模型会排到请求能去的其他候选之后，但仍在失败后休息的候选之前。它答过的对话在下一轮换到排在最前的那个；同一轮之内不换。没有已知负载的模型保持原位。路由追踪里显示 <code>busy</code> 和负载值。</li>
+      <li><b>路由。</b>在 设置 › 网络与共享 › 繁忙的模型靠后 选了阈值（默认关闭；可选高于 50、70、80 或 90%，或在 settings.json 里把 <code>busyLoad</code> 设为 1 到 9999，比如会排队的供应商可设 150）后，报告负载高于它的模型会排到请求能去的其他候选之后，但仍在失败后休息的候选之前。它答过的对话在下一轮换到排在最前的那个；同一轮之内不换。没有已知负载的模型保持原位。路由追踪里显示 <code>busy</code> 和负载值。</li>
     </ul>
     <p>为旧版宿主写的插件先检查 <code>input.magpie?.load</code>，如上例。</p>
 

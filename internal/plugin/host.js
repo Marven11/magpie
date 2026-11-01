@@ -1958,22 +1958,24 @@ function optionValues(provider) {
 // reportLoad is magpie.load(provider, loads): how busy each of the
 // provider's models is now, as a plugin knows from its vendor, for the
 // model list to show and routing to weigh (axelburks on Discord). loads
-// maps a model id to a percent, 0 to 100 (as a usage window's used), or
-// to null to say it isn't known any more. Called whenever the plugin
+// maps a model id to a percent from 0, past 100 for a vendor that queues
+// (200 is twice what it serves at once; capped at LOAD_MOST), or to null
+// to say it isn't known any more. Called whenever the plugin
 // likes, from its own timer: a model's load counts for five minutes from
 // the call that reported it, so a plugin that stops calling leaves its
 // models unknown, never idle. It returns the count of models taken.
 const LOAD_MODELS = 1000
+const LOAD_MOST = 10000 // a sanity cap: 100 times full, so the UI stays sane
 function reportLoad(provider, loads) {
   if (typeof provider !== "string" || !provider || provider.length > 200) throw new TypeError("magpie.load: provider must be a provider id")
-  if (!loads || typeof loads !== "object" || Array.isArray(loads)) throw new TypeError("magpie.load: loads must map model ids to a number from 0 to 100, or null")
+  if (!loads || typeof loads !== "object" || Array.isArray(loads)) throw new TypeError("magpie.load: loads must map model ids to a number from 0 up, or null")
   const out = {}
   let n = 0
   for (const [id, v] of Object.entries(loads)) {
     if (n >= LOAD_MODELS) break
     if (!id || id.length > 200) continue
     if (v === null) out[id] = -1 // cleared
-    else if (typeof v === "number" && Number.isFinite(v)) out[id] = Math.min(100, Math.max(0, v))
+    else if (typeof v === "number" && Number.isFinite(v)) out[id] = Math.min(LOAD_MOST, Math.max(0, v))
     else continue
     n++
   }

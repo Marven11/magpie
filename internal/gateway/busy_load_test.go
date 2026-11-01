@@ -86,6 +86,21 @@ func TestBusyModelGoesBehind(t *testing.T) {
 		t.Fatalf("over 50: %v, want %v", got, want)
 	}
 
+	// a vendor that queues reports past 100 (axelburks: 200% happens),
+	// and a threshold past 100 goes by it
+	plugin.NoteLoadsForTest("inhouse", map[string]float64{"big": 180, "mid": 120}, now)
+	busyLoadAt(t, 150)
+	want = []string{"inhouse-plugin/mid", "inhouse-plugin/old", "inhouse-plugin/none", "inhouse-plugin/big", "down-busy-test"}
+	got, busy = order()
+	if !same(got, want) || busy[3] != 180 {
+		t.Fatalf("over 150: %v %v, want %v", got, busy, want)
+	}
+	s := settings.Load()
+	s.BusyLoad = settings.BusyLoadMost
+	if err := settings.Save(s); err == nil {
+		t.Fatalf("a threshold of %d was saved", settings.BusyLoadMost)
+	}
+
 	// a lone candidate is tried whatever its load
 	if out, pl := restLast([]candidate{c("big")}, planned{order: make([]Weighed, 1)}); len(out) != 1 || pl.order[0].Busy != 0 {
 		t.Fatalf("lone: %+v", pl.order)
