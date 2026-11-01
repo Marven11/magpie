@@ -85,6 +85,35 @@ type subscriptionBridge struct {
 	// finds no run
 	lost      map[string]lostRun
 	lostCalls map[string]lostRun
+	// untrusted are callers' folders, by account folder, whose
+	// interactive Claude Code asked whether to trust them, and when: a
+	// run for one goes in magpie's own folder until untrustedFor has
+	// passed (start)
+	untrusted sync.Map
+}
+
+// untrustedFor is how long a caller's folder Claude Code asked to trust
+// is passed over before it is tried again, the user having maybe trusted
+// it in their own Claude Code since.
+const untrustedFor = 10 * time.Minute
+
+// tuiUntrusted is a run whose interactive Claude Code, in the caller's
+// folder under the user's own account, asked whether to trust it, which
+// the helper leaves to the user (claudetui.TrustEnv).
+type tuiUntrusted struct {
+	key, dir string
+	err      error
+}
+
+func (e *tuiUntrusted) Error() string { return e.err.Error() }
+func (e *tuiUntrusted) Unwrap() error { return e.err }
+
+// passedOver is whether a run in dir under configDir's account goes in
+// magpie's own folder instead: its Claude Code asked lately whether to
+// trust it.
+func (b *subscriptionBridge) passedOver(configDir, dir string) bool {
+	at, ok := b.untrusted.Load(configDir + "\x00" + dir)
+	return ok && time.Since(at.(time.Time)) < untrustedFor
 }
 
 // A run left for its conversation's next turn waits idleLongest at most,
@@ -744,7 +773,7 @@ const claudeMCPPath = "/_magpie/claude-mcp/"
 // reads its input, and the turn was answered 502 "Claude Code ended"
 // (FrierenF on Discord).
 func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, configDir, owner string, from *savedSession) (*subscriptionRun, <-chan Event, error) {
-	run, events, err := b.startRun(ctx, req, model, configDir, owner, from)
+	run, events, err := b.startTrusted(ctx, req, model, configDir, owner, from)
 	var noStart *tuiNoStart
 	if errors.As(err, &noStart) {
 		// never tried again as -p (claudeTUIErr)
@@ -756,9 +785,28 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	if err != nil && (from != nil || req.replayed) && !errors.As(err, &full) && !errors.As(err, &refused) && !errors.As(err, &tui) && ctx.Err() == nil {
 		log.Printf("claude: Claude Code could not go on from the conversation's saved session (%v); a new one is told the whole conversation", err)
 		req.branch, req.told = nil, true
-		return b.startRun(ctx, req, model, configDir, owner, nil)
+		return b.startTrusted(ctx, req, model, configDir, owner, nil)
 	}
 	return run, events, err
+}
+
+// startTrusted is startRun, run again in magpie's own folder when the
+// caller's is one the user hasn't trusted in their own Claude Code, which
+// only they answer: told the caller's folder (envElsewhere), the turn is
+// answered. It was a 502, which a Claude Code client asks again and
+// again, so the turn hung (lwjef on X).
+func (b *subscriptionBridge) startTrusted(ctx context.Context, req *Request, model, configDir, owner string, from *savedSession) (*subscriptionRun, <-chan Event, error) {
+	run, events, err := b.startRun(ctx, req, model, configDir, owner, from)
+	var untrusted *tuiUntrusted
+	if !errors.As(err, &untrusted) || ctx.Err() != nil {
+		return run, events, err
+	}
+	// passed over from now on (passedOver): this run, and the next,
+	// aren't in the caller's folder
+	b.untrusted.Store(untrusted.key, time.Now())
+	log.Printf("claude: Claude Code asks whether to trust %s, which its user hasn't; the run goes in magpie's own folder, told the caller's", untrusted.dir)
+	req.branch = nil
+	return b.startRun(ctx, req, model, configDir, owner, nil)
 }
 
 // startRun is start's Claude Code, from the saved session from when set.
@@ -836,6 +884,9 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	work := ""
 	if binary.wsl == nil {
 		work = clientWorkDir(req)
+		if work != "" && b.passedOver(configDir, work) {
+			work = ""
+		}
 	}
 	client := work != ""
 	if !client {
@@ -997,7 +1048,8 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		// a folder of magpie's, or an account folder of magpie's whose
 		// Claude Code no one else runs: asked whether to trust it, the
 		// shim says yes; in the user's own account a caller's folder is
-		// theirs to answer for, and the run is -p
+		// theirs to answer for, and the run goes in magpie's
+		// (startTrusted)
 		env = append(env, claudetui.TrustEnv+"=1")
 	}
 	cmd.Env = binary.env(binary.asRoot(env), configDir)
@@ -1090,6 +1142,9 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		}
 		if err := run.cliControlWithin(ctx, map[string]any{"subtype": "initialize"}, wait); err != nil {
 			run.abort()
+			if tui && client && configDir == "" && run.saidOnEnd(claudetui.Untrusted) {
+				return nil, nil, &tuiUntrusted{key: configDir + "\x00" + work, dir: work, err: err}
+			}
 			var unanswered *controlUnanswered
 			if tui && errors.As(err, &unanswered) {
 				// the helper hung: the turn fails (start)
@@ -4995,6 +5050,23 @@ func (r *subscriptionRun) tell(line []byte) error {
 // and the last it wrote to stderr.
 func (r *subscriptionRun) whyEnded() error {
 	return r.endedBefore("read its input")
+}
+
+// saidOnEnd is whether the run, ended, wrote words on its stderr, read to
+// its end: its output may end before its stderr is read.
+func (r *subscriptionRun) saidOnEnd(words string) bool {
+	read := make(chan struct{})
+	go func() {
+		r.reading.Wait()
+		close(read)
+	}()
+	select {
+	case <-read:
+	case <-time.After(2 * time.Second):
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return strings.Contains(r.stderr.String(), words)
 }
 
 // endedBefore is whyEnded for a run that ended before it did what: its

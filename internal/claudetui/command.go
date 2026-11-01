@@ -10,6 +10,11 @@ const Command = "claude-tui-helper"
 // answer in their own Claude Code, and the run ends, saying so.
 const TrustEnv = "MAGPIE_CLAUDE_TUI_TRUST"
 
+// Untrusted begins what the helper says, on its stderr, as it ends over a
+// folder it wasn't told to trust: the bridge then runs the turn in a
+// folder of magpie's.
+const Untrusted = "Claude Code asks whether to trust the folder"
+
 // WSLEnv holds, as JSON (WSL), how to run a Claude Code that is in a WSL
 // distro: the helper, on Windows, runs wsl.exe in its pseudo console.
 const WSLEnv = "MAGPIE_CLAUDE_TUI_WSL"

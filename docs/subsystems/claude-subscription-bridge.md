@@ -246,8 +246,15 @@ Code asks whether to trust a folder it has not run in; the helper answers
 yes only when the bridge sets `MAGPIE_CLAUDE_TUI_TRUST=1`, which it does
 for magpie's own working folder or a saved account's config directory,
 both magpie's. In the caller's folder under the account Claude Code is
-signed in to, the question is the user's: a folder the user has not
-trusted fails that run, saying so. The question opens on "No, exit", and a key
+signed in to, the question is the user's: the helper ends there, saying
+so (`claudetui.Untrusted`), and the turn goes in magpie's own folder,
+told the caller's as any run whose folder isn't here is (`envElsewhere`;
+`startTrusted`). That folder is passed over for 10 minutes
+(`passedOver`, `untrustedFor`), then tried again, the user having maybe
+trusted it since. Until 11-01 such a run became `-p`; from then until
+this change it was a 502, which a Claude Code client (paseo) asked again
+with backoff, so the chat hung (lwjef on X).
+`TestClaudeTUIUntrustedFolderAnswered` holds it. The question opens on "No, exit", and a key
 sent as it is first drawn can be lost to its being drawn again, so the
 helper presses ↓ until "Yes" is the last choice drawn and Enter only once
 it has stayed so for 300ms (`ready`, `trustSettle`). Pressing Enter blind

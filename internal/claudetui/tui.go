@@ -311,7 +311,7 @@ func lastAt(re *regexp.Regexp, p string) int {
 	return m[len(m)-1][0]
 }
 
-var errUntrusted = errors.New("Claude Code asks whether to trust the folder, which only its user answers")
+var errUntrusted = errors.New(Untrusted + ", which only its user answers")
 
 // signIn is what Claude Code's interactive mode shows where it is not
 // signed in, as -p may be (CLAUDE_CODE_OAUTH_TOKEN, a container whose
