@@ -1252,18 +1252,15 @@ func forgetOverflow(key string, c candidate) {
 // every other member has failed: it is put behind, not out, and when it
 // answers the memory of its refusal is dropped. A request smaller than
 // what was refused — the agent has compacted the conversation — leaves
-// the member where it was. What rests, or is all but used up, is ordered
-// as it was: this moves only who of those ready is asked first.
+// the member where it was.
 func behindOverflow(key string, cs []candidate, pl planned, size int) ([]candidate, planned) {
 	if len(cs) < 2 || len(pl.order) != len(cs) {
 		return cs, pl
 	}
+	// the conversation's map is read under the lock: another request of
+	// the same conversation may be noting or forgetting in it at once
 	overflowLearned.Lock()
 	noted := overflowLearned.m[key]
-	overflowLearned.Unlock()
-	if len(noted) == 0 {
-		return cs, pl
-	}
 	var behind, ready []candidate
 	var behindW, readyW []Weighed
 	for i, c := range cs {
@@ -1273,6 +1270,7 @@ func behindOverflow(key string, cs []candidate, pl planned, size int) ([]candida
 		}
 		ready, readyW = append(ready, c), append(readyW, pl.order[i])
 	}
+	overflowLearned.Unlock()
 	if len(behind) == 0 || len(ready) == 0 {
 		return cs, pl
 	}
