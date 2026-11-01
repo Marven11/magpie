@@ -491,7 +491,25 @@ history to the 1h cache at 2×.
    Code could not go on from the conversation's saved session". Before,
    the turn got 502 "Claude Code ended" with the safety context set, and
    an empty reply without it.
-3. `retire`, then a new run told the whole conversation. `retire` takes
+3. `retire`, then a new run. In the interactive mode, a conversation
+   with a reply that calls no tool is given to the new Claude Code as
+   its own transcript (`replaySession`, in `claude_replay.go`): a session
+   file of two lines, a user line holding the conversation before that
+   reply as below (its images as image blocks, client cache marks taken
+   out) and an assistant line holding the reply's words (thinking left
+   out). The run starts with `--resume` on it and is typed only the turns
+   after the reply, as a saved session's run is (the session is
+   discarded if the run doesn't take it). The file goes in the project
+   folder of the work folder with its links followed, which is the one
+   Claude Code reads (on a Mac `/var` is `/private/var`). Before 11-01
+   the conversation was the first message, pasted: 229 messages and 3
+   images that way were refused (#4778), and 25 images of earlier turns
+   were pasted one by one until the paste timed out (#4780). A real
+   Claude Code 2.1.316 resumed such a transcript of 465KB with 3 images
+   and answered from all of it. If the run fails to start from it,
+   `start` tries once more told whole (`req.told`). With the interactive
+   mode off (`-p`), in WSL (no session folder) and with no such reply,
+   the run is told the whole conversation. `retire` takes
    the request: an aside of a run that was told tools (`asideOf`: a
    title or summary asked between turns with `tool_choice` none or with
    no tools) doesn't let go of the run the conversation waits in. When it has

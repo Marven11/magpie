@@ -208,6 +208,13 @@ type Request struct {
 	// reply made the calls this request answers after another request
 	// did: its run branches off it there (subscriptionBridge.branch).
 	branch *savedSession
+	// told, for the Claude bridge's interactive mode, is a run's being
+	// told the conversation whole, not given it as a transcript
+	// (replaySession), as after Claude Code couldn't go on from one
+	told bool
+	// replayed: the run started was given the conversation as a
+	// transcript (replaySession)
+	replayed bool
 	// hourMarks has the cache marks magpie adds on Anthropic's Messages
 	// (anthropicBody) last an hour: a Responses client's (Codex's), whose
 	// turns are often more than five minutes apart and whose own vendor

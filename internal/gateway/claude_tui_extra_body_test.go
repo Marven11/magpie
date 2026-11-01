@@ -36,7 +36,7 @@ exec "$claude" "$@"
 // it starts (a real 2.1.316: an apply_flag_settings or a --settings file
 // rewritten later changed nothing it sent), so a run whose turn carries
 // safeguards is given them in its environment, and a turn whose
-// safeguards differ starts a new run told the whole conversation; one
+// safeguards differ starts a new run given the whole conversation; one
 // with the same goes on in the run. They were refused with the
 // interactive mode on (e5f66f8a6).
 func TestClaudeTUISafeguardsInEnv(t *testing.T) {
@@ -67,8 +67,9 @@ func TestClaudeTUISafeguardsInEnv(t *testing.T) {
 	for _, log := range runs {
 		if strings.Contains(log, `"classifier_context":"The user allows nothing in the project."`) {
 			seen = true
-			if !strings.Contains(log, "a1") || !strings.Contains(log, "a3") {
-				t.Fatalf("the new run wasn't told the whole conversation: %s", log)
+			// the turns before in a transcript it resumes (replaySession)
+			if !strings.Contains(log, "--resume ") || !strings.Contains(log, "a3") {
+				t.Fatalf("the new run wasn't given the whole conversation: %s", log)
 			}
 		}
 	}

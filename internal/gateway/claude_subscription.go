@@ -753,9 +753,9 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	var full *claudeFull
 	var refused *cliSchemaRefused
 	var tui *tuiRefusal
-	if err != nil && from != nil && !errors.As(err, &full) && !errors.As(err, &refused) && !errors.As(err, &tui) && ctx.Err() == nil {
+	if err != nil && (from != nil || req.replayed) && !errors.As(err, &full) && !errors.As(err, &refused) && !errors.As(err, &tui) && ctx.Err() == nil {
 		log.Printf("claude: Claude Code could not go on from the conversation's saved session (%v); a new one is told the whole conversation", err)
-		req.branch = nil
+		req.branch, req.told = nil, true
 		return b.startRun(ctx, req, model, configDir, owner, nil)
 	}
 	return run, events, err
@@ -906,6 +906,15 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 			from.mu.Lock()
 			from.session, from.cut, from.gone = sid, "", false
 			from.mu.Unlock()
+		}
+	}
+	req.replayed = false
+	if from == nil && !req.told && sessions != nil && claudePrintWhy(req, binary) == "" {
+		// the interactive mode is given the conversation as Claude Code's
+		// own transcript, and typed its last turn (replaySession)
+		if from = replaySession(sessions, work, model, req); from != nil {
+			req.replayed = true
+			defer from.discard() // unless the run took it
 		}
 	}
 	if from != nil {

@@ -10,8 +10,8 @@ import (
 )
 
 // A branch of a claude -p run's session, made before the interactive mode
-// was turned on, goes to a new interactive Claude Code told the whole
-// conversation: -p's prompt isn't the interactive mode's, so the cache has
+// was turned on, goes to a new interactive Claude Code given the whole
+// conversation (a transcript of its own, replaySession): -p's prompt isn't the interactive mode's, so the cache has
 // nothing of it. It was refused with the interactive mode on.
 func TestClaudeTUIBranchOfPrintRunIsToldWhole(t *testing.T) {
 	h := tuiScriptHarness(t, "")
@@ -55,8 +55,18 @@ func TestClaudeTUIBranchOfPrintRunIsToldWhole(t *testing.T) {
 		log = newRun(h, before)
 		return strings.Contains(log, "later words")
 	})
-	if strings.Contains(log, "--resume") || !strings.Contains(log, "first words") {
-		t.Fatalf("the branch's run wasn't a new one told the whole conversation: %s", log)
+	// given the whole conversation: as a transcript of its own
+	// (replaySession), never the -p run's session
+	args, _, _ := strings.Cut(log, "\n")
+	_, sid, resumed := strings.Cut(args, "--resume ")
+	sid, _, _ = strings.Cut(sid, " ")
+	whole := strings.Contains(log, "first words")
+	if resumed {
+		b, _ := os.ReadFile(filepath.Join(sessions[len(sessions)-1], sid+".jsonl"))
+		whole = sid != "s-print" && strings.Contains(string(b), "first words") && !strings.Contains(log, "first words")
+	}
+	if !whole {
+		t.Fatalf("the branch's run wasn't a new one given the whole conversation: %s", log)
 	}
 	if req.branch != nil {
 		t.Fatal("the request still names the -p run's branch")
