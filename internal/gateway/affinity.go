@@ -120,6 +120,8 @@ type Affinity struct {
 	// at a new turn: backFromStandIn), "credits" (a Codex account gone
 	// onto its credits answered it, set to spend them only after
 	// everything else, and one not on its credits leads: lastBehind),
+	// "busy" (its plugin says the model is busier than settings.BusyLoad
+	// and one that isn't leads, at a new turn: busyBehind),
 	// "strict" (Stays: Strict, kept whatever it is).
 	Why string `json:"why"`
 	// Main is, for a conversation kept strictly on a provider's fallback,
@@ -596,6 +598,12 @@ func affine(scope, mode string, rotate, spread, inOrder bool, in http.Header, fr
 		// has cached, the conversation goes to one not on its credits,
 		// within a turn too, as that is what the credits would pay for
 		a.Why = "credits"
+	case !a.Within && busyBehind(pl.order, at):
+		// its plugin says the model is busy past the user's BusyLoad,
+		// and one that isn't leads: the next turn goes there rather than
+		// wait in the vendor's queue (axelburks on Discord). Within a
+		// turn it stays, on the reasoning it sealed for the tool loop
+		a.Why = "busy"
 	case !a.Within && backToMain(pl.order, at):
 		// a provider's fallback is its emergency path, not a place a
 		// conversation stays: once one of the provider's own keys or
@@ -821,7 +829,7 @@ func leastHeld(scope, key string, cs []candidate, pl planned, ready bool) ([]can
 	seat := func(c candidate) string { return c.who() + "/" + provider.WithMemberEffort(c.model, c.effort) }
 	best := -1
 	for i, c := range cs {
-		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || lastBehind(pl.order, i) || ready && i > 0 && !readyForNew(pl.order, i) {
+		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) || ready && i > 0 && !readyForNew(pl.order, i) {
 			continue
 		}
 		if best < 0 || held[seat(c)] < held[seat(cs[best])] {
@@ -847,7 +855,7 @@ func leastHeld(scope, key string, cs []candidate, pl planned, ready bool) ([]can
 // lowShare.
 func readyForNew(order []Weighed, i int) bool {
 	w := order[i]
-	return w.Rest == nil && !w.Aside && !standsIn(order, i) && !(w.Known && w.Used >= lowShare) && !lastBehind(order, i)
+	return w.Rest == nil && !w.Aside && !standsIn(order, i) && !(w.Known && w.Used >= lowShare) && !lastBehind(order, i) && !busyBehind(order, i)
 }
 
 // standsIn says whether order[i] is a provider's fallback while one of the
@@ -860,6 +868,14 @@ func readyForNew(order []Weighed, i int) bool {
 // (01huadalang on Discord, 10-31).
 func standsIn(order []Weighed, i int) bool {
 	return i < len(order) && order[i].Fallback && !order[0].Fallback
+}
+
+// busyBehind says whether order[i] is a model its plugin says is busy
+// (Weighed.Busy) while one that isn't leads: restLast put it behind the
+// ready ones, and spreading conversations or taking turns never brings
+// it forward past them.
+func busyBehind(order []Weighed, i int) bool {
+	return i > 0 && i < len(order) && order[i].Busy > 0 && order[0].Busy == 0
 }
 
 // lastBehind says whether order[i] is a Codex account on its credits set
@@ -919,7 +935,7 @@ func spreadsSessions(mode, routing string) bool {
 func after(cs []candidate, pl planned, at int) ([]candidate, planned) {
 	for d := 1; d < len(cs); d++ {
 		i := (at + d) % len(cs)
-		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || lastBehind(pl.order, i) {
+		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) {
 			continue // a turn goes round the keys routed over only
 		}
 		if i > 0 {

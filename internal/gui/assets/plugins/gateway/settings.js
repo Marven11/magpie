@@ -78,8 +78,22 @@ function renderPort(s) {
 // lists each model by its own id as well, gpt-5.6-sol beside
 // codex/gpt-5.6-sol. Posted on its own; off by default.
 function renderBareIds(s) {
+  renderBusyLoad(s); // the row under it
   $("#bareIdsSegs").replaceChildren(segs([[false, t("Off")], [true, t("On")]], !!s.bareModelIDs, (on) =>
     writingPrefs(api("settings/bare-ids", { on })).then((ns) => { prefs = state.settings = ns; renderSettings(); })
+      .catch((e) => { status(t(e.message), "err"); renderSettings(); })));
+}
+
+// renderBusyLoad: the load past which a model its plugin says is busy
+// (magpie.load) goes behind the others (settings.BusyLoad, axelburks on
+// Discord); one set in settings.json to another number is shown too
+function renderBusyLoad(s) {
+  const at = s.busyLoad || 0;
+  const opts = [0, 50, 70, 80, 90];
+  if (!opts.includes(at)) opts.push(at);
+  opts.sort((a, b) => a - b);
+  $("#busyLoadSegs").replaceChildren(segs(opts.map((n) => [n, n ? t("Over {n}%", { n }) : t("Off")]), at, (n) =>
+    writingPrefs(api("settings/busy-load", { at: n })).then((ns) => { prefs = state.settings = ns; renderSettings(); })
       .catch((e) => { status(t(e.message), "err"); renderSettings(); })));
 }
 

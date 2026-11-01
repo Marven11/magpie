@@ -5252,6 +5252,14 @@ function rateTag(rate = 0, was = 0) {
   return tag;
 }
 
+// loadTag: how busy its plugin says the model is now (magpie.load)
+function loadTag(n) {
+  if (n == null) return null;
+  const g = el("span", "badge ctx", Math.round(n) + "%");
+  g.title = t("{n}% busy now, as its plugin says", { n: Math.round(n) });
+  return g;
+}
+
 // modelTells: what tells apart the models of one list that would show the
 // same label (sunset on Discord). items are the list's entries, label(x)
 // what each shows, id(x) its id, and key(x) the part of the list it is
@@ -11163,9 +11171,7 @@ function renderModels(p) {
     for (const m of p.models) {
       const on = draft.chosen.includes(m.id);
       if (f && !m.id.toLowerCase().includes(f) && !(m.name || "").toLowerCase().includes(f) && !(m.default || "").toLowerCase().includes(f)) continue;
-      // past the first 80 only the picked are drawn, till the rest are
-      // asked for: a picked model is never out of sight (#685: 10 picked,
-      // 7 shown, and "4 more, filter to find them" with no names to filter by)
+      // past the first 80 only the picked are drawn, till the rest are asked for (#685)
       if (picksOnly && !on) { unpicked++; continue; }
       if (shown >= 80 && !f && !showAll && !on) { hidden++; continue; }
       const c = el("button", "mchip pick" + (on ? " on" : served.has(m.id) ? " auto" : "") + (noAPI(m) ? " noapi" : ""));
@@ -11178,11 +11184,11 @@ function renderModels(p) {
       if (free) c.append(el("span", "badge free", t("free")));
       const rate = rateTag(m.rate, m.rateWas);
       if (rate) c.append(rate);
+      const load = loadTag(m.load);
+      if (load) c.append(load);
       const ctx = contextTag(m.context, m.name);
       if (ctx) c.append(ctx);
-      // the number Claude Desktop's menu says beside this model, which it
-      // names after its own catalog (#2578), so a row of that menu can be
-      // matched to this provider
+      // the number Claude Desktop's menu says beside this model (#2578)
       if (m.desktop) {
         const d = el("span", "badge ctx", m.desktop);
         d.title = t("The number Claude Desktop's menu shows beside this model");

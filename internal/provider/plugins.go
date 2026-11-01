@@ -115,6 +115,13 @@ func subscriptionID(id string) bool {
 // IsPlugin is whether the provider is a plugin's.
 func (p Provider) IsPlugin() bool { return p.Account != nil && p.Account.plugin != nil }
 
+// PluginForTest is the provider id served by the plugin's provider
+// pluginID, for a test to build a candidate of.
+func PluginForTest(id, pluginID string) Provider {
+	pp := plugin.Provider{ID: pluginID}
+	return Provider{ID: id, Account: &Account{Agent: "plugin", User: id, plugin: &pp}}
+}
+
 // PluginProvider is the id OpenCode knows the plugin's provider p is by
 // (grok, kiro), whatever magpie names it; "" for one no plugin gives.
 func (p Provider) PluginProvider() string {

@@ -1264,7 +1264,7 @@ async function loadPlugins(list) {
     // magpie's own (OpenCode has none): the plugin's options as the user
     // set them in magpie, read when wanted, so a change reaches the
     // plugin without a restart (#2038)
-    magpie: { option: optionValue, options: optionValues },
+    magpie: { option: optionValue, options: optionValues, load: reportLoad },
   }
   // pi's packages and extensions are loaded as pi loads them (pi.js)
   let pi
@@ -1953,6 +1953,32 @@ function optionValues(provider) {
   const out = {}
   for (const o of optionsOf(auths().get(provider)?.auth)) out[o.key] = typeof own[o.key] === "boolean" ? own[o.key] : o.default
   return out
+}
+
+// reportLoad is magpie.load(provider, loads): how busy each of the
+// provider's models is now, as a plugin knows from its vendor, for the
+// model list to show and routing to weigh (axelburks on Discord). loads
+// maps a model id to a percent, 0 to 100 (as a usage window's used), or
+// to null to say it isn't known any more. Called whenever the plugin
+// likes, from its own timer: a model's load counts for five minutes from
+// the call that reported it, so a plugin that stops calling leaves its
+// models unknown, never idle. It returns the count of models taken.
+const LOAD_MODELS = 1000
+function reportLoad(provider, loads) {
+  if (typeof provider !== "string" || !provider || provider.length > 200) throw new TypeError("magpie.load: provider must be a provider id")
+  if (!loads || typeof loads !== "object" || Array.isArray(loads)) throw new TypeError("magpie.load: loads must map model ids to a number from 0 to 100, or null")
+  const out = {}
+  let n = 0
+  for (const [id, v] of Object.entries(loads)) {
+    if (n >= LOAD_MODELS) break
+    if (!id || id.length > 200) continue
+    if (v === null) out[id] = -1 // cleared
+    else if (typeof v === "number" && Number.isFinite(v)) out[id] = Math.min(100, Math.max(0, v))
+    else continue
+    n++
+  }
+  if (n) send({ event: "load", provider, loads: out })
+  return n
 }
 
 // optionValue is one of provider's options as it stands; false for a key

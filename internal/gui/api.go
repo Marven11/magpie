@@ -1498,6 +1498,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// how agents' lists name models, set on its own for the agents to be told
 		in.PlainNames, in.PlainOwnNames = cur.PlainNames, cur.PlainOwnNames
 		in.BareModelIDs = cur.BareModelIDs // set on its own (bare-ids below)
+		in.BusyLoad = cur.BusyLoad         // and so is this (busy-load below)
 		in.CodexAgentsV1 = cur.CodexAgentsV1
 		in.FullContext = cur.FullContext // set on its own (full-context below)
 		in.CompactAt = cur.CompactAt     // and so is the threshold
@@ -1741,6 +1742,24 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		if err := provider.SetBareModelIDs(in.On); err != nil {
 			fail(rw, err)
 			return
+		}
+		writeJSON(rw, settingsState())
+	})
+	// the load over which a model its plugin says is busy goes behind
+	// the others (settings.BusyLoad, axelburks on Discord): 0 for off
+	mux.HandleFunc("POST /api/settings/busy-load", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ At int }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		s := settings.Load()
+		if s.BusyLoad != in.At {
+			s.BusyLoad = in.At
+			if err := settings.Save(s); err != nil {
+				fail(rw, err)
+				return
+			}
 		}
 		writeJSON(rw, settingsState())
 	})

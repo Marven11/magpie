@@ -473,6 +473,11 @@ type Settings struct {
 	// haiku needed more than 8): from 1 to ClassifyTimeoutMost, 0 for
 	// ClassifyTimeoutDefault. ClassifyWait reads it.
 	ClassifyTimeout int `json:"classifyTimeout,omitempty"`
+	// BusyLoad puts a model whose plugin reports it busier than this
+	// percent behind the others it could go to (plugin.ModelLoad,
+	// axelburks on Discord): from 1 to 99, 0 for off. A model with no
+	// load reported, or one older than plugin.LoadFresh, keeps its place.
+	BusyLoad int `json:"busyLoad,omitempty"`
 	// Searcher is the provider that searches the web for a model that
 	// can't: "<provider>" with the small model magpie picks of it,
 	// "<provider>/<model>", or empty for the one magpie picks
@@ -1959,6 +1964,9 @@ func saveOwn(s Settings, recording, reads bool) error {
 	}
 	if s.ClassifyTimeout < 0 || s.ClassifyTimeout > ClassifyTimeoutMost {
 		return fmt.Errorf("a routing group's classifier is given from 1 to %d seconds, or 0 for %d, not %d", ClassifyTimeoutMost, ClassifyTimeoutDefault, s.ClassifyTimeout)
+	}
+	if s.BusyLoad < 0 || s.BusyLoad > 99 {
+		return fmt.Errorf("busy models go last over a load from 1 to 99%%, or 0 for off, not %d", s.BusyLoad)
 	}
 	if s.UsageAlert < 0 || s.UsageAlert > 100 {
 		return fmt.Errorf("a usage alert is at a percentage from 1 to 100, or 0 for off, not %d", s.UsageAlert)

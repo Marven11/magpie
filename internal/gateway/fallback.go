@@ -30,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
 )
@@ -1083,7 +1084,10 @@ func asideOf(cs []candidate, q provider.Provider, fallback bool, from provider.P
 
 // restLast moves those resting after a recent failure behind the rest,
 // and a Codex account set to spend its credits last that has gone onto
-// them (creditsLast) behind both, those in their own order.
+// them (creditsLast) behind both, those in their own order. Ahead of the
+// resting, a model its plugin says is busier than the user's
+// settings.BusyLoad (busyOf) goes behind the ready ones: it answers, only
+// after a wait in its vendor's queue (axelburks on Discord).
 func restLast(out []candidate, pl planned) ([]candidate, planned) {
 	if len(out) == 1 {
 		if r, ok := restingOf(out[0]); ok {
@@ -1093,25 +1097,42 @@ func restLast(out []candidate, pl planned) ([]candidate, planned) {
 		return out, pl
 	}
 	now := time.Now()
-	var ready, resting, last []candidate
-	var wReady, wResting, wLast []Weighed
+	over := settings.Shared().BusyLoad
+	var ready, busy, resting, last []candidate
+	var wReady, wBusy, wResting, wLast []Weighed
 	for i, c := range out {
 		r, isResting := restingOf(c)
 		if isResting {
 			pl.order[i].Rest = &r
 		}
+		load, isBusy := busyOf(c, over, now)
 		switch {
 		case c.creditsLast(now):
 			pl.order[i].CreditsLast = true
 			last, wLast = append(last, c), append(wLast, pl.order[i])
 		case isResting:
 			resting, wResting = append(resting, c), append(wResting, pl.order[i])
+		case isBusy:
+			pl.order[i].Busy = load
+			busy, wBusy = append(busy, c), append(wBusy, pl.order[i])
 		default:
 			ready, wReady = append(ready, c), append(wReady, pl.order[i])
 		}
 	}
-	pl.order = append(append(wReady, wResting...), wLast...)
-	return append(append(ready, resting...), last...), pl
+	pl.order = append(append(append(wReady, wBusy...), wResting...), wLast...)
+	return append(append(append(ready, busy...), resting...), last...), pl
+}
+
+// busyOf is the load c's plugin last reported for its model, and whether
+// that is over the percent over (settings.BusyLoad; 0 is off). A model
+// with no load reported, or none within plugin.LoadFresh, isn't busy:
+// unknown is never taken for idle nor for busy.
+func busyOf(c candidate, over int, now time.Time) (float64, bool) {
+	if over <= 0 {
+		return 0, false
+	}
+	load, _, ok := plugin.ModelLoad(c.p.PluginProvider(), c.model, now)
+	return load, ok && load > float64(over)
 }
 
 // probeOne keeps, of the candidates resting after a failure, only the one
