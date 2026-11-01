@@ -922,6 +922,7 @@ func GroupFinder() func(id string) (Group, []Member, bool) {
 	var (
 		entries []Entry
 		all     []Group
+		find    entryOf
 		read    bool
 	)
 	return func(id string) (Group, []Member, bool) {
@@ -934,10 +935,10 @@ func GroupFinder() func(id string) (Group, []Member, bool) {
 		}
 		if !read {
 			entries, read = providerEntries(), true
-			all = groupsIn(entries)
+			all, find = groupsIn(entries), entriesBy(entries)
 		}
 		if g, ok := groupOf(all, gid); ok && !g.Disabled {
-			return g, membersIn(entries, all, g), true
+			return g, membersFound(entries, find, all, g, disabledNow()), true
 		}
 		return Group{}, nil, false
 	}
@@ -964,10 +965,16 @@ func membersIn(entries []Entry, all []Group, g Group) []Member {
 
 // membersOff is membersIn less the models off reports.
 func membersOff(entries []Entry, all []Group, g Group, off func(pid, model string) bool) []Member {
+	return membersFound(entries, entriesBy(entries), all, g, off)
+}
+
+// membersFound is membersOff with entries' index made already: GroupFinder
+// looks up every group in one list, and indexing it again for each was
+// most of what the Providers page spent on groups.
+func membersFound(entries []Entry, find entryOf, all []Group, g Group, off func(pid, model string) bool) []Member {
 	var out []Member
 	seen := map[string]int{} // where in out
 	at := 0
-	find := entriesBy(entries)
 	var walk func(g Group, path []string, via []Group, in []string)
 	walk = func(g Group, path []string, via []Group, in []string) {
 		for _, id := range g.routes() {
