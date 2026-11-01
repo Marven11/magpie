@@ -51,6 +51,9 @@ func TestProvidersWrittenAsEncoded(t *testing.T) {
 // buffer to its size: 27 MB of what forty polls allocated. Each provider
 // is encoded alone now.
 func TestProvidersWriteGrowsNoBufferItsSize(t *testing.T) {
+	if raceOn {
+		t.Skip("-race: sync.Pool drops what it holds, so allocations are not what a build allocates")
+	}
 	s := bigProviders()
 	w := &sinkWriter{}
 	writeProvidersJSON(w, s) // json's encoders, warmed
