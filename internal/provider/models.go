@@ -136,7 +136,13 @@ func (p Provider) Fetched() (time.Time, bool) {
 // for a built-in, listed by its plugin for a plugin's.
 func (p Provider) Listed() (time.Time, bool) {
 	if p.IsPlugin() {
-		return plugin.ListedAt()
+		// one look at the plugins' list a request, not one a provider
+		type listed struct {
+			at time.Time
+			ok bool
+		}
+		l := heldOf("plugin-listed", func() listed { at, ok := plugin.ListedAt(); return listed{at, ok} })
+		return l.at, l.ok
 	}
 	return p.Fetched()
 }

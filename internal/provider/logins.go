@@ -946,8 +946,19 @@ func (p Provider) SignedOut() bool {
 }
 
 // Logins lists the remembered accounts of an agent ("" for every one),
-// the active one flagged.
+// the active one flagged. A request lists an agent's once: /api/providers
+// asks it of every provider, twice with its account models, and each
+// took logins.json's lock, a file opened across magpies (a seventh of
+// the list's CPU). The caller gets its own copy.
 func Logins(agent string) []Login {
+	return slices.Clone(heldOf("logins\x00"+agent, func() []Login { return loginsNow(agent) }))
+}
+
+// loginsRuns counts the lists Logins made (a test reads it).
+var loginsRuns atomic.Int64
+
+func loginsNow(agent string) []Login {
+	loginsRuns.Add(1)
 	if settings.AccountDiscoveryOff() {
 		return nil
 	}
