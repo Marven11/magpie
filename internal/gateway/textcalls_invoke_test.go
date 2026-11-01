@@ -580,3 +580,37 @@ func TestInvokeReportedTranslated(t *testing.T) {
 		}
 	}
 }
+
+// A Responses stream that numbers every event, as OpenAI's does, still
+// counts up after the text's calls are made items: the events made for
+// them, and the done events held while the text was read, go after the
+// last one sent, never back nor twice.
+func TestResponsesTextCallsNumberOn(t *testing.T) {
+	var lines []string
+	for i, e := range events(responsesSSE("我来打开谷歌。\n\n" + invokeReported)) {
+		e["sequence_number"] = i
+		b, _ := json.Marshal(e)
+		lines = append(lines, "event: "+e["type"].(string)+"\ndata: "+string(b))
+	}
+	stream := sse(lines...)
+	tc := &responsesTextCalls{names: map[string]bool{"ToolSearch": true}, sse: true, seq: -1}
+	var out []byte
+	for _, p := range cutInto(stream, 37) {
+		out = append(out, tc.write([]byte(p))...)
+	}
+	out = append(out, tc.flush()...)
+	_, names, _, _, _ := responsesStreamRead(t, string(out))
+	if len(names) != 1 || names[0] != "ToolSearch" {
+		t.Fatalf("names %v\n%s", names, out)
+	}
+	evs := events(string(out))
+	for i, e := range evs {
+		n, ok := e["sequence_number"].(float64)
+		if !ok {
+			t.Fatalf("event %d (%v) has no sequence_number\n%s", i, e["type"], out)
+		}
+		if i > 0 && n <= evs[i-1]["sequence_number"].(float64) {
+			t.Fatalf("event %d (%v) numbered %v after %v\n%s", i, e["type"], n, evs[i-1]["sequence_number"], out)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -19,28 +20,6 @@ import (
 // in response.completed's output, which must match. Held text that isn't
 // calls goes on as it came. A reply that came whole is read as
 // wholeTextCalls reads a Chat one.
-
-// responsesToolNames are the function tools of a Responses request.
-func responsesToolNames(body []byte) map[string]bool {
-	var q struct {
-		Tools []struct {
-			Name string `json:"name"`
-		} `json:"tools"`
-	}
-	if decodeJSON(body, &q) != nil || len(q.Tools) == 0 {
-		return nil
-	}
-	m := map[string]bool{}
-	for _, t := range q.Tools {
-		if t.Name != "" {
-			m[t.Name] = true
-		}
-	}
-	if len(m) == 0 {
-		return nil
-	}
-	return m
-}
 
 // geminiToolNames are the function tools of a Gemini request.
 func geminiToolNames(body []byte) map[string]bool {
@@ -72,7 +51,9 @@ type responsesTextCalls struct {
 	names map[string]bool
 	sse   bool
 	buf   []byte
-	seq   int // the last sequence_number the stream carried, -1 for none
+	seq   int // the last sequence_number sent on, -1 before the first
+	// numbers: the stream numbers its events, so the reply's own are too
+	numbers bool
 
 	pending string
 	held    string
@@ -95,7 +76,7 @@ func (t *responsesTextCalls) write(b []byte) []byte {
 	}
 	out, rest := tidyEvents(t.buf, t.event)
 	t.buf = rest
-	return out
+	return t.numbered(out)
 }
 
 func (t *responsesTextCalls) flush() []byte {
@@ -108,7 +89,46 @@ func (t *responsesTextCalls) flush() []byte {
 	if len(b) > 0 {
 		out = t.event(b)
 	}
-	return append(out, t.release()...)
+	return t.numbered(append(out, t.release()...))
+}
+
+// numbered is out with no event's sequence_number at or below the last
+// one sent, which a Responses client takes as the order: the calls made
+// of the text are events of the reply's own, and the done events held for
+// them go after them, so the upstream's numbers would go back or repeat.
+// Such an event goes as one past the last sent; one already past it keeps
+// its number, so a stream nothing was made in goes on as it came.
+func (t *responsesTextCalls) numbered(out []byte) []byte {
+	if len(out) == 0 {
+		return out
+	}
+	var res []byte
+	for rest := out; len(rest) > 0; {
+		n := eventEnd(rest)
+		if n < 0 {
+			n = len(rest)
+		}
+		ev := rest[:n]
+		rest = rest[n:]
+		data := eventData(ev)
+		sq := gjson.GetBytes(data, "sequence_number")
+		if sq.Type != gjson.Number || sq.Index <= 0 {
+			res = append(res, ev...)
+			continue
+		}
+		want := int(sq.Int())
+		if t.seq >= 0 && want <= t.seq {
+			want = t.seq + 1
+		}
+		t.seq = want
+		if int(sq.Int()) == want {
+			res = append(res, ev...)
+			continue
+		}
+		nd := append(append(append([]byte(nil), data[:sq.Index]...), strconv.Itoa(want)...), data[sq.Index+len(sq.Raw):]...)
+		res = append(res, withData(ev, nd)...)
+	}
+	return res
 }
 
 // reData is ev with its data given again as v said, nil when it can't be
@@ -121,12 +141,11 @@ func reData(ev []byte, v any) []byte {
 	return withData(ev, nb)
 }
 
-// send is one event of the reply's own, numbered on from the last one the
-// upstream sent.
+// send is one event of the reply's own, numbered on from the last one
+// sent (numbered) when the stream numbers its events.
 func (t *responsesTextCalls) send(typ string, fields map[string]any) []byte {
-	if t.seq >= 0 {
-		t.seq++
-		fields["sequence_number"] = t.seq
+	if t.numbers {
+		fields["sequence_number"] = t.seq + 1
 	}
 	fields["type"] = typ
 	b, err := marshalPlain(fields)
@@ -210,8 +229,8 @@ func (t *responsesTextCalls) itemText(s string) []byte {
 func (t *responsesTextCalls) event(ev []byte) []byte {
 	data := eventData(ev)
 	typ := gjson.GetBytes(data, "type").String()
-	if sq := gjson.GetBytes(data, "sequence_number"); sq.Exists() {
-		t.seq = int(sq.Int())
+	if !t.numbers && gjson.GetBytes(data, "sequence_number").Exists() {
+		t.numbers = true
 	}
 	if oi := gjson.GetBytes(data, "output_index"); oi.Exists() {
 		t.top = max(t.top, int(oi.Int())+1)
