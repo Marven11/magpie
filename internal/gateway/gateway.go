@@ -8580,6 +8580,9 @@ func writeErrorSaid(w http.ResponseWriter, proto provider.Protocol, status int, 
 // DashScope's "Range of input length should be", "token limit exceeded",
 // a relay's own cap on one request's input, "Input token exceed the limit"
 // (#2445: B.ai, under the model's window, which another member holds).
+// "Context window is full" is how Kiro-backed relays (kiro.rs,
+// kiro2claude) say Kiro's CONTENT_LENGTH_EXCEEDS_THRESHOLD, a 400
+// (ergou0954_54426 on Discord, through a new-api relay).
 // The third line is Chinese that names the input rather than the context
 // (#4420, MYCF711): a group member's 400 "内容太长了，请精简输入或开启新对话",
 // z.ai's code 1261 "Prompt 超长", iFlytek Spark's 10907 "token数量超过上限。
@@ -8588,7 +8591,7 @@ func writeErrorSaid(w http.ResponseWriter, proto provider.Protocol, status int, 
 // 提示词, prompt…) beside its length, so "名称超出最大长度" (a field) or
 // "输出过长" (the reply) isn't taken; bare "token数量超过上限" isn't either,
 // as a day's allowance is said so too.
-var tooLongRe = regexp.MustCompile(`(?i)context_length_exceeded|prompt is too long|input is too long|(exceeds?|exceeded|over|beyond)( the)?( model'?s?)?( maximum)? context|context (length|limit|window) (exceeded|is exceeded)|maximum context length|too many (input |prompt )?tokens|上下文(长度)?(超|过长)|超(过|出)(了)?(模型)?(的)?(最大)?上下文` +
+var tooLongRe = regexp.MustCompile(`(?i)context_length_exceeded|prompt is too long|input is too long|(exceeds?|exceeded|over|beyond)( the)?( model'?s?)?( maximum)? context|context (length|limit|window) (exceeded|is exceeded)|context (window )?(is )?full\b|maximum context length|too many (input |prompt )?tokens|上下文(长度)?(超|过长)|超(过|出)(了)?(模型)?(的)?(最大)?上下文` +
 	`|input token count.*exceeds the maximum|maximum prompt length is \d|reduce the length of the messages|maximum allowed input length|longer than the model'?s context length|available context size|greater than the context length|prompt token count of [\d,]+ exceeds the limit|context window exceeds limit|exceeded model token limit|configured context size|prompt too long|prompt exceeds max length|context_window_exceeded|exceeded (max |maximum )?context length|range of input length should be|token limit exceeded|input tokens? (count )?(exceeds?|exceeded) (the )?(max(imum)? )?limit` +
 	`|(内容|输入|文本|提示词?|prompt|问题|对话|消息)(内容|文本)?(长度)?\s*(太长|过长|超长)|字数(太多|过多)` +
 	`|(内容|输入|文本|提示词?|prompt|问题|对话|消息)[^，。,.;；!！]{0,12}超(过|出)[^，。,.;；!！]{0,12}(长度|token|令牌|字数)` +
