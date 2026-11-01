@@ -6033,13 +6033,32 @@ magpie.plugin("library", (ctx) => {
       steps.replaceChildren(
         el("li", "", t("Open chrome://extensions (edge://extensions in Edge) in the browser you use every day.")),
         el("li", "", t("Turn on Developer mode.")),
-        el("li", "", t("Click Load unpacked and choose {dir}.", { dir: tilde(b.dir) })),
+        el("li", "", b.drag ? t("Drag the folder below onto that page.")
+          : t("Drag the folder from the window that opened onto that page, or click Load unpacked and choose {dir}.", { dir: tilde(b.dir) })),
       );
+      folder.title = t("Drag onto chrome://extensions");
+      folder.lastChild.textContent = tilde(b.dir);
+      folder.dataset.drag = b.drag ? "1" : "";
       if (b.connected) steps.hidden = true;
       else if (b.written) steps.hidden = false;
+      folder.hidden = steps.hidden || !b.drag;
     };
+    // the folder itself, dragged out of the window as Finder drags it: the
+    // mouse that goes down on it and moves hands it to the system's drag
+    const folder = el("div", "mk-browser-folder");
+    folder.append(svg(GLYPH.folder, 22, 1.2), el("span", "mk-browser-folder-name", "Magpie Browser Extension"), el("span", "mk-browser-folder-path mono"));
+    let from = null;
+    folder.addEventListener("pointerdown", (e) => { if (e.button === 0) { from = [e.clientX, e.clientY]; e.preventDefault(); } });
+    folder.addEventListener("pointermove", (e) => {
+      if (!from || Math.hypot(e.clientX - from[0], e.clientY - from[1]) < 4) return;
+      from = null;
+      api("library/browser/drag", {}).catch((err) => status(err.message, "err"));
+    });
+    for (const ev of ["pointerup", "pointercancel"]) folder.addEventListener(ev, () => { from = null; });
+    folder.addEventListener("dragstart", (e) => e.preventDefault());
     steps.hidden = true;
-    box.append(state, steps, go);
+    folder.hidden = true;
+    box.append(state, steps, folder, go);
     const poll = async () => {
       if (!box.isConnected) return;
       try { draw(await api("library/browser")); } catch {}

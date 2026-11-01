@@ -244,6 +244,7 @@ var notYet = map[string]string{
 	"POST /api/plugins/builtin":                  P,  // builtins.go
 	"GET /api/library/browser":                   L,  // browser.go
 	"POST /api/library/browser/setup":            L,  // browser.go
+	"POST /api/library/browser/drag":             L,  // browser.go
 	"GET /api/caller-keys/models":                P,  // caller_keys.go
 	"POST /api/config/repair":                    A,  // config_repair.go
 	"GET /api/context":                           U,  // context.go
