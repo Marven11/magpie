@@ -611,11 +611,10 @@ func (r *chunkRows) of(c *rowChunk) *rowChunk {
 			r.b = rowBufferFor()
 		}
 		b := r.b
-		var lent *[]byte
-		if r.lent {
-			lent = &b.decoded
-		}
-		open := c.unpackReusing(&b.open, b.rows, b.strs, b.shapes, lent)
+		// the block is decoded into b's buffer either way: a pass that
+		// copies its strings took one from a sync.Pool, which each
+		// collection empties, and grew it again (#4372)
+		open := c.unpackReusing(&b.open, b.rows, b.strs, b.shapes, &b.decoded, r.lent)
 		if open == nil { // never written so: pack wrote it in this process
 			b.open = rowChunk{Source: c.Source, Computer: c.Computer}
 			open = &b.open
