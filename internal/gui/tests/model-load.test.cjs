@@ -6,7 +6,10 @@
 // what it is; a model with no load reported shows none. And Settings ›
 // Network and sharing › Busy models last: Off by default, a threshold
 // posted on its own as settings/busy-load, one set in settings.json to
-// another number shown as picked, no click scrolling the page. Every
+// another number shown as picked, no click scrolling the page; Custom…
+// opens a field for 1 to 9999 that says what the number means, refuses
+// anything else without posting, and the number saved shows as its own
+// choice. Every
 // language, Chromium and WebKit, at a narrow and a wide window; no
 // backend, the API is faked here.
 const assert = require("node:assert/strict");
@@ -76,11 +79,11 @@ function server(lang, posted, over = {}) {
 }
 
 const want = {
-  en: { busy: "87% busy now, as its plugin says", queued: "180% busy now, as its plugin says", idle: "0% busy now, as its plugin says", name: "Busy models last", off: "Off", over: (n) => `Over ${n}%`, sub: "last 5 minutes" },
-  zh: { busy: "插件报告当前负载 87%", queued: "插件报告当前负载 180%", idle: "插件报告当前负载 0%", name: "繁忙的模型靠后", off: "关闭", over: (n) => `高于 ${n}%`, sub: "5 分钟" },
-  "zh-TW": { busy: "外掛回報目前負載 87%", queued: "外掛回報目前負載 180%", idle: "外掛回報目前負載 0%", name: "繁忙的模型靠後", off: "關閉", over: (n) => `高於 ${n}%`, sub: "5 分鐘" },
-  ja: { busy: "プラグインの報告では現在 87% の負荷", queued: "プラグインの報告では現在 180% の負荷", idle: "プラグインの報告では現在 0% の負荷", name: "混雑しているモデルを後回しに", off: "オフ", over: (n) => `${n}% 超`, sub: "5 分間" },
-  de: { busy: "laut seinem Plugin gerade zu 87 % ausgelastet", queued: "laut seinem Plugin gerade zu 180 % ausgelastet", idle: "laut seinem Plugin gerade zu 0 % ausgelastet", name: "Ausgelastete Modelle zuletzt", off: "Aus", over: (n) => `Über ${n} %`, sub: "5 Minuten" },
+  en: { busy: "87% busy now, as its plugin says", queued: "180% busy now, as its plugin says", idle: "0% busy now, as its plugin says", name: "Busy models last", off: "Off", over: (n) => `Over ${n}%`, sub: "last 5 minutes", custom: "Custom…", explain: "200 is twice", refused: "whole number from 1 to 9999" },
+  zh: { busy: "插件报告当前负载 87%", queued: "插件报告当前负载 180%", idle: "插件报告当前负载 0%", name: "繁忙的模型靠后", off: "关闭", over: (n) => `高于 ${n}%`, sub: "5 分钟", custom: "自定义…", explain: "200 即两倍", refused: "1 到 9999 之间的整数" },
+  "zh-TW": { busy: "外掛回報目前負載 87%", queued: "外掛回報目前負載 180%", idle: "外掛回報目前負載 0%", name: "繁忙的模型靠後", off: "關閉", over: (n) => `高於 ${n}%`, sub: "5 分鐘", custom: "自訂…", explain: "200 即兩倍", refused: "1 到 9999 之間的整數" },
+  ja: { busy: "プラグインの報告では現在 87% の負荷", queued: "プラグインの報告では現在 180% の負荷", idle: "プラグインの報告では現在 0% の負荷", name: "混雑しているモデルを後回しに", off: "オフ", over: (n) => `${n}% 超`, sub: "5 分間", custom: "カスタム…", explain: "200 はその 2 倍", refused: "1〜9999 の整数" },
+  de: { busy: "laut seinem Plugin gerade zu 87 % ausgelastet", queued: "laut seinem Plugin gerade zu 180 % ausgelastet", idle: "laut seinem Plugin gerade zu 0 % ausgelastet", name: "Ausgelastete Modelle zuletzt", off: "Aus", over: (n) => `Über ${n} %`, sub: "5 Minuten", custom: "Eigener…", explain: "200 ist das Doppelte", refused: "ganze Zahl von 1 bis 9999" },
 };
 const view = (page) => page.locator("#view-settings").evaluate((v) => v.scrollTop);
 
@@ -150,7 +153,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert(await row.isVisible(), "the row is drawn");
         assert.equal((await row.locator(".name").textContent()).trim(), w.name);
         assert((await row.locator(".sub").textContent()).includes(w.sub), "the sub says how long a load counts");
-        assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), [w.off, w.over(50), w.over(70), w.over(80), w.over(90)]);
+        assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), [w.off, w.over(50), w.over(70), w.over(80), w.over(90), w.custom]);
         assert.equal(await segs.nth(0).evaluate((b) => b.classList.contains("on")), true, "off by default");
         assert.equal(await row.locator("select").count(), 0, "no native select");
         assert(await page.locator("#view-settings").evaluate((v) => v.scrollWidth <= v.clientWidth + 1), "the settings scroll sideways");
@@ -170,6 +173,72 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(await view(page), before, "the click scrolled the page");
         assert.deepEqual(errors, []);
       });
+
+      test(`${engine} ${width} ${lang}: a custom threshold is typed in`, async (t) => {
+        const page = await open(engine, width, t, `${lang}-busy-custom`);
+        const errors = [], posted = [];
+        page.on("pageerror", (e) => errors.push(e.message));
+        await page.route("**/*", server(lang, posted));
+        await watchSettingsReads(page);
+        await page.goto("http://magpie.test/?view=settings&tab=network");
+        await settingsDrawn(page);
+        const row = page.locator("#busyLoadRow"), sub = row.locator(".sub"), field = row.locator("input.busy-load-at");
+        const custom = row.locator(".opt", { hasText: w.custom }), apply = row.locator("#busyLoadSegs .val button").first();
+        // a press on what is in sight moves the page no more than the row
+        // grew or shrank by (its sub says more while the field is open):
+        // wheeled to first, so Playwright's own scrolling isn't counted
+        const still = async (what, target, act, done) => {
+          await wheelTo(page, target, 160);
+          const h0 = (await row.boundingBox()).height, v0 = await view(page);
+          await act();
+          await done();
+          await page.waitForTimeout(150);
+          const h1 = (await row.boundingBox()).height, v1 = await view(page);
+          assert(Math.abs(v1 - v0) <= Math.abs(h1 - h0) + 2, `${what} scrolled the page: ${v0} to ${v1}, the row ${h0} to ${h1}`);
+        };
+        await still("Custom…", custom, () => custom.click(), () => field.waitFor());
+        assert(await field.evaluate((f) => document.activeElement === f), "the field takes the keys");
+        assert((await sub.textContent()).includes(w.explain), "the sub says what the number means");
+        assert.equal(await row.locator("select").count(), 0, "no native select");
+        const fits = async (what) => {
+          const rb = await row.boundingBox(), sb = await page.locator("#busyLoadSegs").boundingBox();
+          assert(sb.x + sb.width <= rb.x + rb.width + 1 && sb.x >= rb.x - 1, `${what} runs out of its row`);
+          assert(await page.locator("#view-settings").evaluate((v) => v.scrollWidth <= v.clientWidth + 1), "the settings scroll sideways");
+        };
+        await fits("the field");
+        // wide enough for the four digits it takes
+        assert((await field.boundingBox()).width >= 60, "the field is squeezed");
+        for (const bad of ["abc", "0", "10000", "1.5", "-3"]) {
+          await wheelTo(page, field, 160);
+          await field.fill(bad);
+          await field.press("Enter");
+          await sub.filter({ hasText: w.refused }).waitFor();
+          assert(await sub.evaluate((s) => s.classList.contains("err")), `${bad}: said as an error`);
+          assert.equal(await field.inputValue(), bad, `${bad}: kept to correct`);
+        }
+        await page.waitForTimeout(200);
+        assert.deepEqual(posted, [], "a refused number is posted");
+        // Escape closes it untouched, the choices back as they were
+        await field.press("Escape");
+        await row.locator(".opt.on", { hasText: w.off }).waitFor();
+        assert.deepEqual(posted, []);
+        await still("Custom…", custom, () => custom.click(), () => field.waitFor());
+        await field.fill("150");
+        await still("Apply", apply, () => apply.click(), () => row.locator(".opt.on", { hasText: w.over(150) }).waitFor());
+        assert.deepEqual(posted, [["busy-load", { at: 150 }]]);
+        assert.deepEqual((await row.locator(".opt").allTextContents()).map((s) => s.trim()), [w.off, w.over(50), w.over(70), w.over(80), w.over(90), w.over(150), w.custom]);
+        assert((await sub.textContent()).includes(w.sub), "the sub is back");
+        assert(!(await sub.evaluate((s) => s.classList.contains("err"))), "no error left");
+        await fits("the switch");
+        // the custom value opens again in the field to change it
+        await still("Custom…", custom, () => custom.click(), () => field.waitFor());
+        assert.equal(await field.inputValue(), "150");
+        await field.fill("2000");
+        await field.press("Enter");
+        await row.locator(".opt.on", { hasText: w.over(2000) }).waitFor();
+        assert.deepEqual(posted, [["busy-load", { at: 150 }], ["busy-load", { at: 2000 }]]);
+        assert.deepEqual(errors, []);
+      });
     }
   }
 }
@@ -182,7 +251,7 @@ test("a threshold past 100 set by hand is shown as picked", async (t) => {
   await page.goto("http://magpie.test/?view=settings&tab=network");
   const segs = page.locator("#busyLoadSegs .opt");
   await segs.first().waitFor();
-  assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), ["Off", "Over 50%", "Over 70%", "Over 80%", "Over 90%", "Over 150%"]);
+  assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), ["Off", "Over 50%", "Over 70%", "Over 80%", "Over 90%", "Over 150%", "Custom…"]);
   assert.equal((await page.locator("#busyLoadSegs .opt.on").textContent()).trim(), "Over 150%");
   const rb = await page.locator("#busyLoadRow").boundingBox(), sb = await page.locator("#busyLoadSegs").boundingBox();
   assert(sb.x + sb.width <= rb.x + rb.width + 1, "the switch runs out of its row");
@@ -197,7 +266,7 @@ test("a threshold set by hand is shown as picked", async (t) => {
   await page.goto("http://magpie.test/?view=settings&tab=network");
   const segs = page.locator("#busyLoadSegs .opt");
   await segs.first().waitFor();
-  assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), ["Off", "Over 50%", "Over 70%", "Over 75%", "Over 80%", "Over 90%"]);
+  assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), ["Off", "Over 50%", "Over 70%", "Over 75%", "Over 80%", "Over 90%", "Custom…"]);
   assert.equal((await page.locator("#busyLoadSegs .opt.on").textContent()).trim(), "Over 75%");
   assert.deepEqual(errors, []);
 });
