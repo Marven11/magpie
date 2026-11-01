@@ -15839,6 +15839,8 @@ function renderQuotas(lazy) {
         who.dataset.card = trayCardID(sub);
         if (sub.balanceCard) who.dataset.balCard = sub.balanceCard;
         who.append(...quotaWho(sub));
+        const warm = quotaWarm(sub);
+        if (warm) who.append(warm);
         // in brief, its resets and whether it uses them by itself (#719)
         const auto = brief && autoResetBrief(sub);
         if (auto) who.append(auto);
@@ -15900,8 +15902,8 @@ function renderQuotas(lazy) {
       const credits = !brief && !history && creditsRow(sub, "quota-credits");
       if (credits) card.append(credits);
     }
-    // in the card's head, beside its name: no line of its own
-    // (of the keys in sight: the ones folded away are the foot's button's)
+    // in the card's head, beside its name, of the keys in sight (the
+    // folded ones are the foot's button's)
     if (several) head.append(usageMore(folded.size ? subs.filter((q) => !folded.has(q)) : subs, "text quota-more"));
     if (keys && (folded.size || usageKeysAll.has(first.provider))) card.append(keysMore(first.provider, folded.size));
     if (accts && (folded.size || usageAcctsAll.has(first.provider))) card.append(acctsMore(first.provider, folded.size));
@@ -21028,10 +21030,9 @@ function renderWarmAtOwn(s) {
   }
 }
 
-// renderWarmNow is Warm up now (a Windows user on Discord): one account's
-// warm-up request, the one the scheduled warm-up sends, sent at once. One
-// account is sent at a press; with more the press asks which. What it came
-// to stays on the row's line (warmNowSaid) across renders.
+// renderWarmNow is Warm up now (a Windows user on Discord): the scheduled
+// warm-up's request to one account at once, of several the menu's; what it
+// came to stays on its line (warmNowSaid). An account's card: quotaWarm.
 const warmNowSaid = {};
 function renderWarmNow(agent, users, rowId) {
   const row = $(rowId), sub = row.querySelector(".sub"), box = row.lastElementChild;

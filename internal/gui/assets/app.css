@@ -2067,6 +2067,10 @@ body.panel .profiles #save { height: 25px; } /* the field's: the line keeps its 
 .subscription-account .acct-auto-n { color: var(--muted); }
 .subscription-account .acct-auto + .plan { margin-left: 0; }
 .subscription-account .acct-auto + .quota-every { margin-left: 4px; }
+/* Warm up on an account whose 5 hours haven't started (quotaWarm): at the
+   line's right, before its resets' switch, plan and fold */
+.subscription-account .acct-warm { flex: none; margin: -2px 0 -2px auto; font-size: 11px; padding: 2px 7px; }
+.subscription-account .acct-warm ~ :is(.acct-auto, .plan) { margin-left: 0; }
 .pq-bals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .pq-card.bal { grid-template-columns: minmax(0, 1fr); }
 .pq-bn { display: flex; align-items: center; gap: 6px; }
