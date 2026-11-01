@@ -5,30 +5,19 @@ const params = new URLSearchParams(location.search);
 const mode = params.get("mode") || "window";
 // focus without a scroll, as every focus call here asks
 const NO_SCROLL = { preventScroll: true };
-// A hidden NSWindow keeps its WKWebView's document visible unless the app
-// says otherwise: page timers and SVG animations kept drawing Routing in a
-// closed window. Compose the app's state with WebKit's own so a browser tab
-// that is really hidden still reads hidden.
-let windowOutOfSight = false;
-const nativeHidden = Object.getOwnPropertyDescriptor(Document.prototype, "hidden")?.get;
-const nativeVisibility = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState")?.get;
-try {
-  Object.defineProperty(Document.prototype, "hidden", {
-    configurable: true,
-    get() { return windowOutOfSight || (nativeHidden ? nativeHidden.call(this) : false); },
-  });
-  Object.defineProperty(Document.prototype, "visibilityState", {
-    configurable: true,
-    get() { return windowOutOfSight ? "hidden" : (nativeVisibility ? nativeVisibility.call(this) : "visible"); },
-  });
-} catch { /* a WebKit without writable descriptors keeps its own state */ }
-window.magpieWindowVisibility = (visible) => {
-  const next = !visible;
-  if (next === windowOutOfSight) return;
-  windowOutOfSight = next;
-  document.documentElement.classList.toggle("magpie-out-of-sight", next);
+// a Mac window hidden by orderOut leaves its page drawing: the app says so (#4293)
+let outOfSight = false;
+for (const [k, off] of [["hidden", true], ["visibilityState", "hidden"]]) {
+  const own = Object.getOwnPropertyDescriptor(Document.prototype, k)?.get;
+  try { own && Object.defineProperty(Document.prototype, k, { configurable: true, get() { return outOfSight ? off : own.call(this); } }); } catch {}
+}
+window.magpieWindowVisibility = (v) => {
+  if (outOfSight !== v) return;
+  outOfSight = !v;
+  document.documentElement.classList.toggle("magpie-out-of-sight", outOfSight);
   document.dispatchEvent(new Event("visibilitychange"));
 };
+addEventListener("focus", () => magpieWindowVisibility(true)); // focused is on screen
 // kept: magpie.<k> in localStorage, read as JSON; d when it holds none, or
 // not d's kind, or can't be read. keep writes one, for this time only if
 // it can't be kept

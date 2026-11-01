@@ -73,5 +73,13 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       };
     });
     assert.deepEqual(shown, { hidden: false, state: "visible", marked: false, playState: "running", events: 2 });
+
+    // a window that takes focus is on screen, whichever path showed it
+    const focused = await page.evaluate(() => {
+      window.magpieWindowVisibility(false);
+      window.dispatchEvent(new Event("focus"));
+      return { hidden: document.hidden, marked: document.documentElement.classList.contains("magpie-out-of-sight") };
+    });
+    assert.deepEqual(focused, { hidden: false, marked: false });
   });
 }
