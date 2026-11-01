@@ -251,3 +251,21 @@ func TestCodexSideCallOnOwnModelNotPutOnSignIn(t *testing.T) {
 		}
 	})
 }
+
+// With no setting naming where a side call goes, a title asked on one of
+// Codex's own models still goes on Codex's sign-in, as every turn of the
+// thread does: magpie has nothing of its own to answer it with, and
+// before #4590 that is where it was answered.
+func TestCodexSideCallOnOwnModelUnsetGoesOnSignIn(t *testing.T) {
+	_, models := codexOwnOffMagpieSetup(t, false)
+	for _, kind := range []string{"thread_title", "thread_description", "thread_summary", "composer_predictions"} {
+		*models = nil
+		req := codexOnMagpieRequest("127.0.0.1:51000")
+		req.Header.Set("x-codex-turn-metadata", `{"thread_source":"`+kind+`","parent_thread_id":"main-chat"}`)
+		rec := httptest.NewRecorder()
+		New().Handler().ServeHTTP(rec, req)
+		if len(*models) != 1 || (*models)[0] != "gpt-6.1-sol" {
+			t.Errorf("%s with no setting: %d %s, backend asked for %v", kind, rec.Code, rec.Body.String(), *models)
+		}
+	}
+}
