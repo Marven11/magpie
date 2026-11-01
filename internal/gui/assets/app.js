@@ -18188,10 +18188,8 @@ function balanceShown(q) {
   return [{ text: q.balance }, ...q.balanceSplit.map((p) => ({ ...p, label: t(p.label) }))];
 }
 
-// balanceMeter: a balance field's percent, as a meter. The bar fills the
-// way every window's does (#3193): what is left when the display says
-// Left, the share used on Used; the nearly-full colour keeps to the used
-// share, the meter warning either way.
+// balanceMeter: a balance field's percent, as a meter, filled as Left or
+// Used says (#3193)
 function balanceMeter(percent) {
   const used = to100(percent);
   const track = el("div", "quota-track" + (used >= 90 ? " full" : ""));
@@ -18201,13 +18199,10 @@ function balanceMeter(percent) {
   return track;
 }
 
-// balanceText: a balance part's figure. One asked as a percent reads as a
-// window's does (#3193): Left says what is left of it, "91.1% left", Used
-// the share used as the reply had it. An amount without a percent (money,
-// counts) is as it was.
+// balanceText: a part's figure; a percent one on Left says what is left
 function balanceText(p) {
   if (p.percent == null || !quotaLeft) return p.text;
-  const n = 100 - Math.max(0, Math.min(100, p.percent));
+  const n = 100 - to100(p.percent);
   return t("{n} left", { n: (Number.isInteger(n) ? n : n.toFixed(1)) + "%" });
 }
 
