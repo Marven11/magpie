@@ -191,6 +191,10 @@ type subscriptionRun struct {
 	idleKey string
 	idleAt  time.Time
 	convKey string
+	// handed is set (b.mu held) when its account was handed over to
+	// Claude Code itself during a turn (handedOver): it isn't kept for
+	// the next one
+	handed bool
 	// loose is the conversation it waits at as a client may send it back
 	// rewritten (looseTurn)
 	loose *looseTurn
@@ -519,7 +523,9 @@ func init() {
 // directory of the saved Claude account user, now Claude Code's own sign-in
 // (provider.ClaudeHandedOver): each holds its refresh token, which a
 // refresh there would rotate under Claude Code's copy. Their conversations
-// go on in a new run, on the account the gateway picks then.
+// go on in a new run, on the account the gateway picks then. A run in a
+// turn ends as the turn does, not kept for the next (keepIdle): it went
+// on waiting there, with the same token, for up to idleLongest (#4532).
 func (b *subscriptionBridge) handedOver(user string) {
 	var drop []*subscriptionRun
 	b.mu.Lock()
@@ -528,6 +534,11 @@ func (b *subscriptionBridge) handedOver(user string) {
 			delete(b.idle, key)
 			run.idleKey = ""
 			drop = append(drop, run)
+		}
+	}
+	for _, run := range b.runs {
+		if u, own := ownerAccount(run.owned()); !own && strings.EqualFold(u, user) {
+			run.handed = true
 		}
 	}
 	b.mu.Unlock()
@@ -1834,6 +1845,11 @@ func (b *subscriptionBridge) keepIdle(r *subscriptionRun, key, conv string) bool
 	r.mu.Unlock()
 	if closed {
 		b.mu.Unlock()
+		return false
+	}
+	if r.handed {
+		b.mu.Unlock()
+		r.abortFor("its account was handed over to Claude Code itself")
 		return false
 	}
 	// a run waits at one point of its conversation: kept again, it leaves
