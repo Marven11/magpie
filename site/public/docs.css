@@ -155,7 +155,11 @@ pre .s { color: var(--ink2); }
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; margin: 0 0 20px; background: var(--card); }
 /* the contributors page's list (credits.mjs renderWall) */
-.cw td:first-child { min-width: 8em; white-space: normal; overflow-wrap: anywhere; }
+/* fixed columns: one long word in a release's line can't widen the table past a phone */
+.cw { table-layout: fixed; }
+.cw th:first-child { width: 11em; }
+@media (max-width: 600px) { .cw th:first-child { width: 8em; } }
+.cw td, .cw td:first-child { white-space: normal; overflow-wrap: anywhere; }
 .cw ul { margin: 0; padding: 0; list-style: none; }
 .cw li { margin: 0 0 4px; }
 .cw details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
