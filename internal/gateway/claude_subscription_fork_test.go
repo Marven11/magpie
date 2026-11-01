@@ -217,10 +217,10 @@ wait
 // stays the lead's. The cut is a copy of the session's lines as far as
 // that reply, a session of its own (bbfatx on X): Claude Code's
 // interactive mode doesn't take --resume-session-at, so a branch was -p,
-// and read none of the conversation its interactive lead had cached, and
-// with "Interactive only" there was no branch.
+// and read none of the conversation its interactive lead had cached; with
+// the interactive mode on, a -p branch is never run.
 func TestClaudeForkBranchesOffTheLeadsSession(t *testing.T) {
-	for _, mode := range []string{"print", "interactive", "interactive only"} {
+	for _, mode := range []string{"print", "interactive"} {
 		t.Run(mode, func(t *testing.T) { forkBranches(t, mode) })
 	}
 }
@@ -327,9 +327,6 @@ FAKE_TUI=interactive exec "$claude" "$@"
 `)
 		claudeTUIHelper = helper
 		t.Cleanup(func() { claudeTUIHelper = "" })
-	}
-	if mode == "interactive only" {
-		tuiOnly(t, false)
 	}
 	provider.ForgetAccounts()
 	t.Cleanup(provider.ForgetAccounts)

@@ -239,102 +239,83 @@ yes only when the bridge sets `MAGPIE_CLAUDE_TUI_TRUST=1`, which it does
 for magpie's own working folder or a saved account's config directory,
 both magpie's. In the caller's folder under the account Claude Code is
 signed in to, the question is the user's: a folder the user has not
-trusted makes that run `-p`. The question opens on "No, exit", and a key
+trusted fails that run, saying so. The question opens on "No, exit", and a key
 sent as it is first drawn can be lost to its being drawn again, so the
 helper presses ↓ until "Yes" is the last choice drawn and Enter only once
 it has stayed so for 300ms (`ready`, `trustSettle`). Pressing Enter blind
-chose "No, exit" in the real gateway, and every run went `-p`.
+chose "No, exit" in the real gateway, and no run started.
 
-A run is `-p`, as before, when (`claudeTUI`):
+Every run is `-p` only when Settings › Models › Replies › Claude Code's
+interactive mode is Off (`claudePrintMode`), or in the gateway's own
+tests, whose fake Claude Codes are `-p` ones (`claudeTUIRuns`, code
+`no-shim`). With it On, nothing ever runs as `-p` (the owner, 11-01): the
+plan counts a `-p` request as another client's, at about twice the
+interactive mode's, and a `-p` run starts without the interactive mode's
+cache. A run the interactive mode can't take is refused before any Claude
+Code starts (`startRun`), and the request gets an error naming why and
+the setting (`claudeTUIErr`, `claudeNotTUIWhy`). That is when
+(`claudeTUI`, `claudePrint`):
 
-- Settings › Models › Replies › Claude Code's interactive mode is Off
-  (`claudePrintMode`); (with Interactive only, each case below fails instead:
-  see [Interactive only](#interactive-only-claudetuionly));
 - it is Claude Code in WSL whose home the probe didn't find, or, in
-  the distro user's own folder, one Windows can't read;
+  the distro user's own folder, one Windows can't read (`wslread`);
 - the request has safeguards, client cache marks, a JSON schema, an image
   known only by its URL (`urlImages`: the helper pastes files, and has no
   bytes of it), or words over 400KB (`tuiPromptMost`, images not counted),
-  which a paste can't carry as `-p` does;
+  which a paste can't carry;
 - it is a branch of a `-p` run's session (`branch`: see
   [Tool results another request answers first](#tool-results-another-request-answers-first));
   a branch of an interactive run's session is interactive too.
 
-The gateway's log says which (`claude: this run is -p: …`,
-`claudePrintWhy`), and the helper's own line when it becomes `-p` (below)
-is logged from the run's stderr (`lockedWriter`).
+The gateway's log says which (`claude: not the interactive mode: …`).
+A refused request never ran, so it isn't the editor's last request
+(`noteClaudeRun`). The model test's and warm-up's "hi" (`askClaude`) goes
+through the helper too (`askClaudeTUI`), in stream-json, and its stdin is
+closed at the first result. Reading the plan's allowance (`/usage`) asks
+no model and is still `claude -p /usage`.
 
-The Claude Code provider page says under its accounts whether runs are
-the interactive mode (TUI) or `-p` (CLI), with why when every run is
-`-p`, and opens what tells the two apart (`claudeModeRow` in app.js, drawn by
-claudemode.js, which it loads with its first read).
-It reads `GET /api/claude/mode` (`gateway.ClaudeModeNow`) as the page
+The Claude Code provider editor's "Claude Code runs as" row
+(`claudeModeRow` in app.js, drawn by claudemode.js, which it loads with
+its first read) is a switch between Interactive mode (TUI) and claude
+-p: pressing one saves `claudePrintMode` as Settings' row does
+(`savePrefs`) and reads the mode again. In magpie web it is the
+gateway's, and only its own Settings change it, so the switch is
+disabled. Hovering or focusing it opens what tells the two apart. It
+reads `GET /api/claude/mode` (`gateway.ClaudeModeNow`) as the page
 opens, kept 30 seconds and dropped when the setting changes, not in
 `/api/providers`' polls. What decides it for every run on the machine is
 `claudeMachineWhy`, whose codes the page words: `off` (the setting),
-`broken` (failed to start lately), `wsl-home`, `missing` (no Claude Code
-found), `os` and `no-shim`. What only a request decides (safeguards and
-the rest above) the page names as still `-p`; the WSL folder Windows
-can't read is per account, so the page doesn't know it. A subscription
-with Only switch serves nothing through magpie and shows no row.
+`wsl-home`, `missing` (no Claude Code found), `os` and `no-shim`. Beside
+the switch: turned off, that every request runs as claude -p; on where
+the interactive mode can't run, that Claude requests fail, and why;
+otherwise the last request, when it was the interactive mode's. A
+subscription with Only switch serves nothing through magpie and shows no
+row.
 
 A turn the interactive mode can't take ends the run, and the next starts
-anew: a turn with an image known by its URL, one that takes earlier turns
-back, an effort change. A run given up on (`letGo`) is not taken back, since the
-interactive mode can't answer a control request to stop a turn.
+anew: a turn with an image known by its URL (refused, as above), one
+that takes earlier turns back, an effort change. A run given up on
+(`letGo`) is not taken back, since the interactive mode can't answer a
+control request to stop a turn.
 
 If the interactive Claude Code doesn't start or show its prompt within 45
 seconds (`claudetui.ReadyWait`), or asks how to sign in (`signIn`: a
 Claude Code signed in for `-p` only, as in a container given
-`CLAUDE_CODE_OAUTH_TOKEN`), or shows its first-run notes (`firstRun`:
-"Security notes", a config folder whose onboarding isn't done), the helper becomes `claude -p` with the same
-arguments (`printMode`, `exec` on the same pid, its input still unread),
-so the turn is answered all the same, and it writes
-`<cache>/magpie/claude-tui-broken`, which holds the number of failed
-starts in a row. For 30 minutes after one, doubled with each one after
-to a day (`brokenFor`), every run goes to `-p` at once: the helper is
-not started (`claudePrintWhy`, "the interactive mode failed to start
-lately"). A start that shows its prompt removes the mark. A folder not
-trusted goes to `-p` without the mark.
+`CLAUDE_CODE_OAUTH_TOKEN`), shows its first-run notes (`firstRun`:
+"Security notes", a config folder whose onboarding isn't done) or asks
+about a folder the user hasn't trusted, the helper ends, saying why on
+its stderr and in its exit (`fail` in `Run`). It never becomes `claude
+-p`. Until 11-01 it did, and wrote `<cache>/magpie/claude-tui-broken`,
+after which every run went `-p` for up to a day; that mark is no longer
+written or read, and one left on disk does nothing.
 
 The helper answers the bridge's `initialize` only once the prompt is
-shown, or as `-p` after the fallback, so the bridge waits for it
-`tuiInitWait` (`ReadyWait` and twice a control request's 10s), not the
-10s of any other control request. With 10s, a Claude Code slower than
-that to start (2 vCPU in Docker) was ended as the helper waited, before
-it could become `-p`, and every try was answered 502 "Claude Code has
+shown, so the bridge waits for it `tuiInitWait` (`ReadyWait` and twice a
+control request's 10s), not the 10s of any other control request. With
+10s, a Claude Code slower than that to start (2 vCPU in Docker) was ended
+as the helper waited, and every try was answered 502 "Claude Code has
 not answered magpie's initialize request in 10s" (#4504). A helper that
-answers nothing even then is ended, the mark is written, and `start`
-starts the turn again as `-p`.
-
-### Interactive only (`claudeTUIOnly`)
-
-The setting has a third choice, Interactive only, for users who would
-rather a request fail than go out as `-p`. With it (`claudeTUIOnly()`,
-which `claudePrintMode` set too overrides):
-
-- a run that `claudeTUI` would make `-p` (any reason above) is not
-  started; the request gets an error naming the reason and the setting
-  (`claudeOnlyErr`, `claudeNotTUIWhy`);
-- the helper is handed `MAGPIE_CLAUDE_TUI_ONLY=1` (`claudetui.OnlyEnv`,
-  `claudeCLI.tuiEnv`). Where it would become `-p` (no start, `ready`'s
-  sign-in, first-run notes, untrusted folder or timeout) it exits with
-  the reason instead (`fallBack` in `Run`), and it ignores the broken mark;
-- a helper that never answers `initialize` ends the turn with an error,
-  not a `-p` try. The mark is still written, but the `broken` code is
-  not counted under Interactive only (`claudeMachineWhy`), so the next
-  run tries the interactive mode again;
-- the model test's and warm-up's "hi" (`askClaude`) goes through the
-  helper too (`askClaudeTUI`), in stream-json, and its stdin is closed at
-  the first result.
-
-Reading the plan's allowance (`/usage`) asks no model and stays `-p`.
-The provider page's "Claude Code runs as" row reads `ClaudeMode.Only`:
-with the interactive mode in use it says a request it can't take fails,
-and its card says nothing runs as `-p`; where the interactive mode can't
-run, the pill names Interactive only, never `claude -p`, and says Claude
-requests fail and why, with Change in Settings. A request refused this
-way never ran, so it isn't the row's last request (`noteClaudeRun`).
+answers nothing even then is ended (`tuiNoStart`), and the turn fails
+saying the interactive mode didn't start; the next turn tries it again.
 
 ## Why turns go on in one run
 
