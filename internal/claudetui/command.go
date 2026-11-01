@@ -24,3 +24,11 @@ type WSL struct {
 	// Projects is Claude Code's projects folder, as Windows reads it
 	Projects string `json:"projects"`
 }
+
+// MCPCommand is the hidden subcommand of magpie's tool server, the MCP
+// server a run's --mcp-config names "magpie" (claudebridge.RunMCP). Its
+// arguments are the callback's file, the tools' file and, for the
+// interactive mode, a file it writes once Claude Code has listed its
+// tools: the first message waits for it (MinhuWang on X: a first message
+// sent before then had none of the agent's tools).
+const MCPCommand = "claude-mcp-helper"

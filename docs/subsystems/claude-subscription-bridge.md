@@ -347,7 +347,19 @@ after which every run went `-p` for up to a day; that mark is no longer
 written or read, and one left on disk does nothing.
 
 The helper answers the bridge's `initialize` only once the prompt is
-shown, so the bridge waits for it `tuiInitWait` (`ReadyWait` and twice a
+shown and Claude Code has listed the tools of magpie's MCP server. Claude
+Code connects its MCP servers beside its prompt, and a first message sent
+at the prompt was answered without the agent's tools (MinhuWang on X, a pi
+agent whose tool server was slow to load; with the server held 8s, the
+real 2.1.309 answered as if it had none). So `startRun` gives
+`claude-mcp-helper` a third argument, `listed` in the run's temp folder,
+which it writes once it has answered `tools/list`
+(`claudetui.MCPCommand`), and `ready` reads that path from the run's
+`--mcp-config` (`mcpListed`) and waits for the file as well as the prompt,
+within the same 45 seconds; past them it ends, saying the tools weren't
+listed. The model test's and warm-up's runs have no such server and don't
+wait. `TestShimFirstMessageWaitsForTools` and
+`TestToolsListedFileWritten` hold it. So the bridge waits for it `tuiInitWait` (`ReadyWait` and twice a
 control request's 10s), not the 10s of any other control request. With
 10s, a Claude Code slower than that to start (2 vCPU in Docker) was ended
 as the helper waited, and every try was answered 502 "Claude Code has

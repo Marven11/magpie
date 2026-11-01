@@ -813,8 +813,10 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		cleanup()
 		return nil, nil, err
 	}
+	// the interactive mode's first message waits for the file the tool
+	// server writes once Claude Code has listed its tools (MinhuWang on X)
 	mcpConfig, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{
-		"magpie": map[string]any{"command": exe, "args": []string{"claude-mcp-helper", callbackPath, toolsPath}},
+		"magpie": map[string]any{"command": exe, "args": []string{claudetui.MCPCommand, callbackPath, toolsPath, filepath.Join(tmp, "listed")}},
 	}})
 	args := claudeCLIArgs(model, string(mcpConfig), req.Effort, req.WebSearch)
 	if req.ThinkOff {

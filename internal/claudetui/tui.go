@@ -99,6 +99,10 @@ type shim struct {
 	// what Claude Code is given for it
 	tap *tap
 	env []string
+
+	// listed is the file magpie's tool server writes once Claude Code has
+	// listed its tools (mcpListed), "" for a run without it
+	listed string
 }
 
 // Run runs Claude Code at path, args being the bridge's `claude -p` ones,
@@ -126,7 +130,7 @@ func Run(args []string) error {
 		return fmt.Errorf("Claude Code's interactive mode didn't run: %s", why)
 	}
 	args = interactiveArgs(pargs[len(wslArgs(wsl)):])
-	s := &shim{out: os.Stdout, changed: make(chan struct{}, 1), rowsCh: make(chan struct{}, 1), exited: make(chan struct{}), wsl: wsl}
+	s := &shim{out: os.Stdout, changed: make(chan struct{}, 1), rowsCh: make(chan struct{}, 1), exited: make(chan struct{}), wsl: wsl, listed: mcpListed(args)}
 	resume := ""
 	for i, a := range args {
 		if a == "--resume" && i+1 < len(args) {
@@ -326,6 +330,7 @@ var firstRun = regexp.MustCompile(`Security notes:.*Press Enter to continue`)
 func (s *shim) ready() error {
 	deadline := time.After(readyWait)
 	answered := 0
+	prompted := false
 	var yesAt, downAt time.Time
 	for {
 		p := s.plain()
@@ -370,7 +375,16 @@ func (s *shim) ready() error {
 			s.clearScreen()
 			_, _ = io.WriteString(s.pty, "\r")
 		case strings.Contains(p, "❯ "):
-			// drawn: a moment for its input to be listened to
+			if !s.toolsListed() {
+				// drawn before Claude Code has its MCP servers' tools: it
+				// connects them as the prompt shows, and a message sent
+				// now is answered without the agent's tools, which
+				// magpie's tool server carries (MinhuWang on X)
+				prompted = true
+				break
+			}
+			// drawn: a moment for its input to be listened to, and for
+			// the tools just listed to be taken up
 			time.Sleep(300 * time.Millisecond)
 			return nil
 		}
@@ -380,9 +394,47 @@ func (s *shim) ready() error {
 		case <-s.exited:
 			return fmt.Errorf("Claude Code ended before it showed its prompt (%v): %s", s.exit, s.lastScreen())
 		case <-deadline:
+			if prompted {
+				return fmt.Errorf("Claude Code showed its prompt, but hadn't listed the tools of magpie's tool server in %s", readyWait)
+			}
 			return fmt.Errorf("Claude Code showed no prompt in %s: %s", readyWait, s.lastScreen())
 		}
 	}
+}
+
+// toolsListed is whether Claude Code has listed magpie's tool server's
+// tools, or the run has no such server.
+func (s *shim) toolsListed() bool {
+	if s.listed == "" {
+		return true
+	}
+	_, err := os.Stat(s.listed)
+	return err == nil
+}
+
+// mcpListed is the file magpie's tool server (MCPCommand) is told, in the
+// --mcp-config of args, to write once Claude Code has listed its tools;
+// "" when it isn't told one.
+func mcpListed(args []string) string {
+	for i, a := range args {
+		if a != "--mcp-config" || i+1 >= len(args) {
+			continue
+		}
+		var c struct {
+			Servers map[string]struct {
+				Args []string `json:"args"`
+			} `json:"mcpServers"`
+		}
+		if json.Unmarshal([]byte(args[i+1]), &c) != nil {
+			continue
+		}
+		for _, srv := range c.Servers {
+			if len(srv.Args) == 4 && srv.Args[0] == MCPCommand {
+				return srv.Args[3]
+			}
+		}
+	}
+	return ""
 }
 
 func (s *shim) emit(v any) {

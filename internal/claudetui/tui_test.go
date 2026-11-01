@@ -132,6 +132,13 @@ func fakeClaude(args []string) {
 			_, _ = tapped.WriteString(`{"tap":"on"}` + "\n")
 		}
 	}
+	// FAKE_MCP_DELAY: magpie's tool server is listed that long after the
+	// prompt shows, as Claude Code connects its MCP servers beside it; a
+	// message sent before then is answered without the tools
+	listed := mcpListed(args)
+	if d, err := time.ParseDuration(os.Getenv("FAKE_MCP_DELAY")); err == nil && listed != "" {
+		time.AfterFunc(d, func() { _ = os.WriteFile(listed, nil, 0o600) })
+	}
 	streams := 0
 	fmt.Print("\r\n❯ ")
 	// the prompt's words; an image file's path pasted alone is read a
@@ -188,6 +195,11 @@ func fakeClaude(args []string) {
 		line := typed.String()
 		typed.Reset()
 		mu.Unlock()
+		if listed != "" {
+			if _, err := os.Stat(listed); err != nil {
+				line += " (without magpie's tools)"
+			}
+		}
 		if tapped != nil {
 			streams++
 			n := streams
@@ -476,6 +488,28 @@ func TestShimNeverPrints(t *testing.T) {
 				t.Fatalf("the next run ended %v, wrote %q, stderr %q", err, out, stderr)
 			}
 		})
+	}
+}
+
+// The first message waits for Claude Code to have listed the tools of
+// magpie's tool server, which it connects as its prompt shows: sent at
+// the prompt, it was answered without the agent's tools (MinhuWang on X,
+// a pi agent, the MCP server slow to load).
+func TestShimFirstMessageWaitsForTools(t *testing.T) {
+	listed := filepath.Join(t.TempDir(), "listed")
+	cfg, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{
+		"magpie": map[string]any{"command": "magpie", "args": []string{MCPCommand, "callback", "tools.json", listed}},
+	}})
+	args := slices.Clone(pArgs)
+	args[slices.Index(args, "--mcp-config")+1] = string(cfg)
+	start := time.Now()
+	out := runShim(t, []string{"FAKE_MCP_DELAY=2s"}, append([]string{fakePath(t)}, args...), []string{"hello"}, 3)
+	b, _ := json.Marshal(out[1]["message"])
+	if out[1]["type"] != "assistant" || !strings.Contains(string(b), "echo: hello") || strings.Contains(string(b), "without magpie's tools") {
+		t.Fatalf("the first turn said %s", b)
+	}
+	if d := time.Since(start); d < 2*time.Second {
+		t.Fatalf("answered in %s, before the tools were listed", d)
 	}
 }
 
