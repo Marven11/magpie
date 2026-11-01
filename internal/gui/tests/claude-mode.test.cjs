@@ -89,6 +89,10 @@ async function openEditor(browser, lang, run, { id = "claude", width = 900, swit
   const row = page.locator(`.row.provider[data-id="${id}"]`);
   await row.waitFor({ timeout: 60000 });
   await row.click();
+  // the click's pointer stays where the editor draws its switch, and
+  // WebKit opens the hover card for a pointer that never moved (#4638):
+  // the pointer leaves the page before the editor is read
+  await page.mouse.move(0, 0);
   await page.locator("#modal .ebody").waitFor();
   return { page, errors, reads };
 }
