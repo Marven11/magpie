@@ -5092,7 +5092,8 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			body, searchFn = searchAsFunction(body)
 		}
 		body = forVendor(p, body, asksCompaction(r.Context()))
-		// Ark takes web_search in the shape its docs give (search_ark.go)
+		// Ark takes web_search in the shape its docs give, and only the include
+		// values it knows (search_ark.go)
 		body = forArkSearch(p, body)
 		if replay {
 			// its reasoning goes back as text, never left out: DeepSeek
