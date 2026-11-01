@@ -1216,6 +1216,8 @@
     const mw = e.middleware;
     const gw = e.gateway;
     const ag = e.agent;
+    // a provider's or agent's options (plugins#592)
+    const ownOpts = !e.isMiddleware && !e.isGateway && !!(e.options || e.optionsExample);
     if (mw || e.isMiddleware) nm.append(kindChip("mw"));
     if (gw || e.isGateway) nm.append(kindChip("mw", "Request hook"));
     if (ag || e.isAgent) nm.append(kindChip("ag"));
@@ -1275,7 +1277,7 @@
     if (e.page && !ask) who.append(pageLine(e.page));
     if (e.panels?.length && !ask) who.append(panelsLine(e.panels, e.panelReads));
     if (e.actions?.length && !ask) who.append(actionsLine(e.actions));
-    if ((mw || e.isGateway) && !e.off && !ask && editing?.pkg === pkg) who.append(optionsEditor(e));
+    if ((mw || e.isGateway || ownOpts) && !e.off && !ask && editing?.pkg === pkg) who.append(optionsEditor(e));
     // the plugin's own picture (package.json's magpie.icon) before its
     // first provider's, which a plugin of several gives each its own (#1775)
     r.append(logo(l?.icon || l?.npm?.icon || e.icon || subs[0]?.icon || ag?.icon, false, e.middlewareOnly ? "mw" : e.inMagpieOnly && e.isAgent && !e.isMiddleware ? "ag" : e.inMagpieOnly && (e.page || e.panels?.length) && !e.isAgent && !e.isMiddleware ? "pg" : toolsOnly && !e.page && !mw && !ag ? "tl" : ""), who);
@@ -1325,7 +1327,7 @@
       r.append(val);
       return r;
     }
-    if ((e.isGateway || (mw && !mw.error)) && !e.off && editing?.pkg !== pkg) {
+    if ((e.isGateway || (mw && !mw.error) || ownOpts) && !e.off && editing?.pkg !== pkg) {
       const o = el("button", "text", t("Options"));
       o.title = e.options ? t("The options it runs with") : t("It runs with no options; its package suggests some");
       o.disabled = !!b;
@@ -1357,7 +1359,7 @@
     return r;
   }
 
-  // optionsEditor is a middleware's options as JSON, in its row: what it
+  // optionsEditor is a plugin's options as JSON, in its row: what it
   // runs with, or what its package suggests when it has none. The draft is
   // kept in editing, so a redraw while typing doesn't lose it.
   function optionsEditor(e) {
@@ -1396,7 +1398,7 @@
       const clr = el("button", "text quiet", t("Clear"));
       clr.title = t("Runs it with no options");
       clr.onclick = async () => {
-        if (!await confirmAction(t("Clear"), t("Saved middleware options will be removed. The plugin will run with no options."), t("Clear"))) return;
+        if (!await confirmAction(t("Clear"), t("Saved options will be removed. The plugin will run with no options."), t("Clear"))) return;
         editing = null;
         act(name(e.spec), "options", { spec: e.spec, options: null }, () => status(t("{name}'s options cleared", { name: shownName(e) }), "ok"));
       };
@@ -1407,9 +1409,6 @@
     return box;
   }
 
-  // mwLine is a middleware's line in its plugin's row: its hooks, how many
-  // calls and how long each took, and the calls that failed (which went on
-  // as if it weren't there), or why it didn't load
   // clashGroups are a row's clashes, one per other plugin and side: a
   // plugin that signs in to two providers another one does too is one
   // line naming both, not a line each saying the same thing (#565)
@@ -1426,11 +1425,9 @@
   }
 
   // clashLine is the providers two installed plugins both sign in to, as
-  // the row of either says it: served here, or served by the other one.
-  // The other one goes by its name; when that is this row's own name too
-  // (the same plugin installed twice, from two places), by where it came
-  // from, since "CodeArts / OfficeAce also signs in to CodeArts" on the
-  // CodeArts / OfficeAce row read as the plugin naming itself (#565)
+  // either row says it. The other one goes by its name, or by where it
+  // came from when that is this row's name too (one plugin installed
+  // twice: it read as the plugin naming itself, #565)
   function clashLine(e, g, nameOfSpec) {
     const d = el("div", "sub pm-clash" + (g.here ? "" : " warn"));
     const own = shownName(e);
@@ -1523,6 +1520,7 @@
     return whereLine(actions, "menu", MENUS, (where) => t("Adds items to {where}, which open its page", { where }));
   }
 
+  // mwLine is a middleware's hooks, calls, time each and failures, or why it didn't load
   function mwLine(m) {
     const d = el("div", "sub pm-mw");
     if (m.error) {
