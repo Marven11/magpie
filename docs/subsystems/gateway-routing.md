@@ -962,7 +962,8 @@ searcher with no level at all. Only these two calls carry it
 ([`side_effort.go`](../../internal/gateway/side_effort.go)):
 
 - `askVisionWith` sends Chat's `reasoning_effort`; the image cache key
-  (`describe`) has the level in it, so a new level reads the image again.
+  (`sightKey`) has the level picked in it, so a new pick reads the image
+  again.
 - `searchBody` sends the searcher's Anthropic body `thinking` (`disabled` for
   `none`, else enabled with `budgetOf`'s budget, 1024 for `minimal`) and
   `output_config.effort` unless the vendor model is a Claude older than
@@ -1285,10 +1286,15 @@ asks no other.
 - When none answers, the error is the first's reason as before, then
   "nor could X, asked in its place: why" for each other one
   (`visionFailed`).
-- `sights` keeps a description under the describer asked first, whichever
-  model answered: the image sent again next turn is asked of no one, and a
-  new image is asked of the pick first again, so a pick that failed once is
-  not given up for good. A failure is still not kept.
+- `sights` keeps a description under the image (`sightKey`): a base64
+  data URL's decoded bytes, else the URL, with the level picked in
+  Settings. Not under a model: the image sent again next turn is asked of
+  no one, whichever model is picked now (AutoVision's pick changing
+  between turns had a long conversation's every image described again,
+  Pkh on Discord), and a new image is asked of the pick first again, so a
+  pick that failed once is not given up for good. The same bytes sent on
+  another protocol, or under another media type, are described once
+  (`seenBody` dedupes by the key too). A failure is still not kept.
 
 This differs from a searcher named in Settings, which gives way to no other
 provider: a failed search still leaves the search APIs and the model's own
@@ -1301,6 +1307,40 @@ Covered by `TestPickedDescriberThatFailsGivesWayToTheNextThatSees`,
 `TestCanceledDescriptionAsksNoOther`
 ([`vision_fallback_test.go`](../../internal/gateway/vision_fallback_test.go))
 and `vision-instead.test.cjs`.
+
+## A description is no one request's
+
+A description is asked once (`describe`) on a context of its own
+(`context.WithoutCancel` of the first asker's, with its own cancel):
+every request that sends the image while it is being described waits on
+the same one (`sight.waiting`). One whose agent cancels it stops
+waiting; the description goes on for the others, and only the last to
+go stops it and takes it out of `sights`, so the next to send the image
+asks again. Before, the description ran on the first asker's context:
+its cancel failed the description for every other request waiting on it
+with "context canceled", and took it out of the cache, so the next turn
+read the image again. A reply that came whole is kept though its asker
+ended as it came (`askVisionWith` reads the reply before the context).
+
+In `seenBody`, an image waiting for one of the `visionParallel` slots
+when its request ends is asked of no one: before, each queued image went
+on to `serve` with a dead context, and one canceled request put a row for each
+image on the Routing page in a few ms (Pkh: 63 in ~60ms).
+
+A description's `serve` runs on its request's context, so its route is
+noted on that request's `inflight` (`noteRoute`) and stands in for it on
+the Routing page while it waits; when the images can't be described,
+the request is given a route of its own, ended 499 when its agent
+canceled it and 502 else (`notDescribed`), and its usage record names
+it. One magpie answered for, held too long (`giveUp`), keeps the route
+that showed it. A routing group's request, routed already, ends 499 too
+when its agent canceled it.
+
+Covered by `TestSameImageDescribedOnceWhateverDescribesIt`,
+`TestOneRequestGoneLeavesTheDescriptionToAnother`,
+`TestCanceledRequestAsksNoMoreDescriptions` and
+`TestCanceledWhileDescribingKeepsItsRoute`
+([`vision_dedupe_test.go`](../../internal/gateway/vision_dedupe_test.go)).
 
 ## Image recognition as an MCP server
 
