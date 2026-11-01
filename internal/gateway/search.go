@@ -565,7 +565,9 @@ type smallCand struct {
 // the vendor's own, not one of the shapes guessed at below: their model
 // stays in the pool though its ID carries a namespace colon (a relay's
 // cn:deepseek-v4.1-flash, #4359) or one of the words, and keep has said
-// whether it sees. An ID that starts a group, a found group or, on a
+// whether it sees. Only their "it sees" lifts the guess: a "takes no
+// images" says nothing of whether the ID is a vendor's model, and keeps
+// the guess as it was. An ID that starts a group, a found group or, on a
 // subscription, what magpie wrote into its agent, is magpie's own shape
 // whatever the user said of it, and stays out.
 func smallCands(p provider.Provider, keep func(catalog.Model) bool) []smallCand {
@@ -575,11 +577,13 @@ func smallCands(p provider.Provider, keep func(catalog.Model) bool) []smallCand 
 		if keep != nil && !keep(m) {
 			continue
 		}
-		if _, said := provider.ImageOverrideIn(s, p.ID, m.ID); !said {
+		// a subscription's list can have what magpie wrote into its agent
+		if strings.HasPrefix(m.ID, provider.GroupPrefix) || strings.HasPrefix(m.ID, provider.AutoPrefix) || (p.Account != nil && strings.Contains(m.ID, "/")) {
+			continue
+		}
+		if sees, said := provider.ImageOverrideIn(s, p.ID, m.ID); !said || !sees {
 			l := strings.ToLower(m.ID)
-			// a subscription's list can have what magpie wrote into its agent
-			if strings.HasPrefix(m.ID, provider.GroupPrefix) || strings.HasPrefix(m.ID, provider.AutoPrefix) || (p.Account != nil && strings.Contains(m.ID, "/")) ||
-				strings.ContainsAny(l, ":~") || slices.ContainsFunc([]string{"nano", "lite", "image", "audio", "tts", "embed", "free"}, func(w string) bool { return strings.Contains(l, w) }) {
+			if strings.ContainsAny(l, ":~") || slices.ContainsFunc([]string{"nano", "lite", "image", "audio", "tts", "embed", "free"}, func(w string) bool { return strings.Contains(l, w) }) {
 				continue
 			}
 		}

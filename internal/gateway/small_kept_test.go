@@ -224,6 +224,34 @@ func TestAutoVisionPicksANamespacedIDTheUserSaidSees(t *testing.T) {
 	}
 }
 
+// Only the user's "it sees" lifts the shape guess in the small models'
+// pool (#4359): their "takes no images" says nothing of the ID, so a
+// colon ID they marked so stays out of the searcher's pool too, and an ID
+// of magpie's own shape (a group's, auto's) stays out whatever they said.
+func TestSmallCandsLiftOnlyWhatTheUserSaidSees(t *testing.T) {
+	fresh(t)
+	p := provider.Provider{ID: "relay", Name: "Relay", Chat: "http://relay.invalid/v1", Key: "k",
+		Models: []string{provider.GroupPrefix + "g", provider.AutoPrefix + "a", "cn:text-only", "cn:sees", "cn:unsaid"}}
+	if err := provider.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	st := settings.Load()
+	st.ModelImages = map[string]bool{
+		"relay/" + provider.GroupPrefix + "g": true, "relay/" + provider.AutoPrefix + "a": true,
+		"relay/cn:text-only": false, "relay/cn:sees": true,
+	}
+	if err := settings.Save(st); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, c := range smallCands(p, nil) {
+		ids = append(ids, c.id)
+	}
+	if len(ids) != 1 || ids[0] != "cn:sees" {
+		t.Fatalf("pool %v, want only cn:sees", ids)
+	}
+}
+
 // rankSmall's order is pickSmall's pick of every subset, as pickSmall
 // was before the ranking: the first of a subset is its pick.
 func TestRankSmallIsPickSmall(t *testing.T) {
