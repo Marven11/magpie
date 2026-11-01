@@ -537,6 +537,10 @@ type Settings struct {
 	// cards are there, the cards alone (KevinXC on Discord); a click on one
 	// still opens the panel, and with no cards the bird is shown.
 	TrayNoBird bool `json:"trayNoBird,omitempty"`
+	// TrayNoNumber keeps magpie's icon in Windows' tray while cards are
+	// picked; off by default, the icon is the first card's figure
+	// (Benjaminliang_1 on X), as Windows' tray shows no text beside it.
+	TrayNoNumber bool `json:"trayNoNumber,omitempty"`
 	// TrayPace puts each window's Pace number beside its figure in the
 	// menu bar ("42% +12%"), as the Usage page's cards have it (fflake33
 	// on Discord); off by default, as it widens every card.
@@ -1320,7 +1324,7 @@ func (s *Settings) KeepOwn(cur Settings) {
 	s.WindowMaximised, s.KeepAwake, s.KeepAwakeDisplay = cur.WindowMaximised, cur.KeepAwake, cur.KeepAwakeDisplay
 	s.WindowAt = cur.WindowAt
 	s.TrayUsages, s.TrayUsage, s.TrayUsageEvery, s.TrayNoLogos, s.TrayNoBird, s.TrayPace, s.TrayNoCost = cur.TrayUsages, cur.TrayUsage, cur.TrayUsageEvery, cur.TrayNoLogos, cur.TrayNoBird, cur.TrayPace, cur.TrayNoCost
-	s.TrayWindows = cur.TrayWindows
+	s.TrayWindows, s.TrayNoNumber = cur.TrayWindows, cur.TrayNoNumber
 	s.GatewayMode = cur.GatewayMode
 	s.NoWSLAgents = cur.NoWSLAgents
 	s.QuotaReads = cur.QuotaReads

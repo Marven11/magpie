@@ -5,9 +5,12 @@
 // window unless some are picked. The pick is saved by provider, kept when
 // another setting is saved, and All windows takes it back. A window the
 // card shows only when picked (trayExtra: Opus, Cursor's Grok Bot,
-// CrazyJal on X) is offered too, and can be picked alone. Hidden on
-// Windows, whose tray shows the tooltip alone, and with no card of two
-// windows. Every language; narrow too. No backend, the API is faked here.
+// CrazyJal on X) is offered too, and can be picked alone. Hidden with no
+// card of two windows; shown on Windows too, whose tray icon draws the
+// first card's figure. Settings → Tray icon number (settings.TrayNoNumber,
+// Benjaminliang_1 on X) is Windows' alone: on, the icon is that figure;
+// off, magpie's bird. Every language; narrow too. No backend, the API is
+// faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -181,10 +184,55 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     });
 
     await t.test("hidden where it changes nothing", async () => {
-      for (const opt of [{ platform: "Win32" }, { over: { trayUsages: ["copilot", "usage:today"], trayUsage: "copilot" } }, { over: { trayUsages: [], trayUsage: "" } }]) {
+      for (const opt of [{ over: { trayUsages: ["copilot", "usage:today"], trayUsage: "copilot" } }, { over: { trayUsages: [], trayUsage: "" } }, { platform: "Win32", over: { trayUsages: [], trayUsage: "" } }]) {
         const { context, page } = await open(browser, "en", [], opt);
         await page.waitForTimeout(300);
         assert.equal(await page.locator("#trayWindowsRow").isVisible(), false, JSON.stringify(opt));
+        assert.equal(await page.locator("#trayNumberRow").isVisible(), false, JSON.stringify(opt));
+        await context.close();
+      }
+    });
+
+    const NUMBER = { en: ["Tray icon number", "Off", "On"], zh: ["托盘图标数字", "关闭", "开启"], "zh-TW": ["托盤圖示數字", "關閉", "開啟"], ja: ["トレイアイコンの数値", "オフ", "オン"], de: ["Zahl im Tray-Symbol", "Aus", "An"] };
+    for (const [lang] of LANGS) {
+      await t.test("Windows: " + lang, async () => {
+        const posts = [];
+        const { context, page, errors } = await open(browser, lang, posts, { platform: "Win32", over: { trayWindows: { claude: ["7d"] } } });
+        // which window is the icon's figure matters on Windows too
+        await page.locator("#trayWindowsRow").waitFor();
+        const row = page.locator("#trayNumberRow");
+        await row.waitFor();
+        const [name, off, on] = NUMBER[lang];
+        assert.equal(await row.locator(".name").textContent(), name);
+        const segs = row.locator("#trayNumberSegs button");
+        assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), [off, on]);
+        // on unless turned off: nothing changes for the user till then
+        assert.equal(await segs.nth(1).getAttribute("aria-pressed"), "true");
+        await segs.nth(0).click();
+        for (let i = 0; i < 100 && !posts.length; i++) await page.waitForTimeout(20);
+        assert.equal(posts.length, 1);
+        assert.equal(posts[0].trayNoNumber, true);
+        assert.deepEqual(posts[0].trayWindows, { claude: ["7d"] }, "the pick is kept");
+        // another setting saved keeps it off
+        await page.waitForFunction(() => document.querySelector("#trayNumberSegs button")?.getAttribute("aria-pressed") === "true");
+        await page.locator("#trayWindowsPick button").click();
+        await page.locator(".proto-menu .pm-item").first().click();
+        await page.keyboard.press("Escape");
+        for (let i = 0; i < 100 && posts.length < 2; i++) await page.waitForTimeout(20);
+        assert.equal(posts.at(-1).trayNoNumber, true);
+        // the Mac's menu bar rows are not Windows'
+        for (const id of ["#trayLogosRow", "#trayBirdRow", "#trayPaceRow"]) assert.equal(await page.locator(id).isVisible(), false, id);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "no sideways scroll");
+        assert.deepEqual(errors, []);
+        await context.close();
+      });
+    }
+
+    await t.test("Tray icon number is Windows' alone", async () => {
+      for (const platform of ["MacIntel", "Linux x86_64"]) {
+        const { context, page } = await open(browser, "en", [], { platform });
+        await page.locator("#trayWindowsRow").waitFor();
+        assert.equal(await page.locator("#trayNumberRow").isVisible(), false, platform);
         await context.close();
       }
     });
