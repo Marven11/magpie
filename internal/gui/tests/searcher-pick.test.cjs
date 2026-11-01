@@ -204,10 +204,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await page.locator("#searchList .row").nth(1).evaluate((e) => e.classList.contains("search-add")), true);
 
       const where = () => page.evaluate(() => [scrollX, scrollY, document.scrollingElement.scrollTop, document.querySelector("main")?.scrollTop ?? 0]);
-      const click = async (loc) => {
-        const b = await loc.boundingBox();
-        await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
-      };
+      const click = (loc) => pickItem(page, loc);
       const before = await where();
 
       // a model of a provider
