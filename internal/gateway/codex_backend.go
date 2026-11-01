@@ -467,7 +467,7 @@ func loggedAnswers(convs ...string) []loggedAnswer {
 	// its candidates have (cybercaius: a renamed provider was told apart
 	// from itself)
 	renamed := provider.UsageRenames()
-	usage.Visit(time.Now().Add(-sealerKeep), func(r usage.Record) {
+	usage.VisitSessions(time.Now().Add(-sealerKeep), convs, func(r usage.Record) {
 		// the provider that answered, not one a deleted provider's
 		// calls were merged into on the Usage page (Renames.Own)
 		r.Provider = renamed.Own(r.Provider, r.Time)
@@ -479,9 +479,6 @@ func loggedAnswers(convs ...string) []loggedAnswer {
 		ownRelay := r.Provider == "openai" || (r.Provider == "codex" && !strings.Contains(r.Host, " as "))
 		if ownRelay && strings.HasPrefix(r.Endpoint, CodexPath) {
 			return // Codex's own sign-in
-		}
-		if !slices.Contains(convs, r.NativeSession) && !slices.Contains(convs, r.Session) {
-			return
 		}
 		a := loggedAnswer{provider: r.Provider, at: r.Time}
 		switch {
