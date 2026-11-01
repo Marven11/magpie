@@ -206,6 +206,7 @@
     for (const e of all) {
       if (!e.target.isConnected) { cardSizes.unobserve(e.target); continue; }
       const card = e.target, w = e.contentRect.width;
+      if (!w) continue; // out of sight (#4652)
       cardWidth[card.dataset.place] = w;
       // on the next frame: a class changed in the observer's own call
       // changes the card's height, which WebKit reports as a

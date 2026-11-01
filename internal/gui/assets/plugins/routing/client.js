@@ -269,9 +269,12 @@ function routingPage(part) {
   // scrolling view back from its end a frame after each scroll there, so
   // the page couldn't be scrolled to its bottom (#1249). Set on the next
   // frame: a class changed in the observer's own call changes the box's
-  // height, which WebKit reports as a ResizeObserver loop (see quotaFit)
+  // height, which WebKit reports as a ResizeObserver loop (see quotaFit).
+  // Out of sight a box is 0 wide: it keeps the layout it had, or coming
+  // back laid out narrow and then, a frame later, wide again (#4652)
   const byWidth = (node, marks) => new ResizeObserver(([e]) => {
     const w = e.contentRect.width;
+    if (!w) return;
     requestAnimationFrame(() => {
       for (const [cls, fits] of Object.entries(marks)) node.classList.toggle(cls, fits(w));
     });
@@ -309,9 +312,10 @@ function routingPage(part) {
   }); };
   // only a new width can make the numbers wrap or fit: measured on its
   // height too, the mark it sets made the rows taller and measured them
-  // again, flipping back and forth (#2524: 8 times in 8s, ~200ms each)
+  // again, flipping back and forth (#2524: 8 times in 8s, ~200ms each).
+  // Out of sight (0 wide) is no new width: back, nothing is measured (#4652)
   let metaW = -1;
-  new ResizeObserver(() => { const w = colA.clientWidth; if (w !== metaW) { metaW = w; metaFit(); } }).observe(colA);
+  new ResizeObserver(() => { const w = colA.clientWidth; if (w && w !== metaW) { metaW = w; metaFit(); } }).observe(colA);
 
   const path = () => { const p = document.createElementNS(NS, "path"); wires.appendChild(p); return p; };
   const setText = (e, s) => { if (e.textContent !== s) e.textContent = s; };
@@ -2286,13 +2290,21 @@ function routingPage(part) {
   // when the page comes back. Built while hidden, every trace update put
   // new agents, rows and wires in, and their entrance and live animations,
   // held by a timeline that doesn't run while the window is hidden, kept
-  // each replaced node alive (#2515, #2513)
+  // each replaced node alive (#2515, #2513). Back in sight with the stage
+  // built from what it would be built from now ("back"), it is brought up
+  // to date as in sight, not taken down and built again: the same agents,
+  // accounts and wires made anew each time the page was picked (#4652)
+  let builtFrom = [];
   function sync(force) {
     if (!shown()) return;
     const rs = staged();
     if (!rs.length) return;
-    if (force) return steady(() => rebuild(rs, true));
-    rebuild(rs, false);
+    const from = () => [cur, pinned, day, rp, purpose.join(), document.documentElement.lang, ...rs,
+      ...rs.flatMap((r) => [...r.order, ...(r.left || [])].map(who))];
+    const now = from(), same = now.length === builtFrom.length && now.every((x, i) => x === builtFrom[i]);
+    if (force === "back" ? !same : force) steady(() => rebuild(rs, true));
+    else rebuild(rs, false);
+    builtFrom = from(); // as built: rebuild takes cur from the routes
   }
   function rebuild(rs, force) {
     // live, the request the card tells of stays (told), not the newest staged
@@ -3797,7 +3809,11 @@ function routingPage(part) {
   // (fitCols). Digits are as wide as each other there (tabular-nums), so a
   // probe stands for every row of its shape. The rows were a subgrid of
   // the list once, and Safari 16 crashed sizing them (#3731).
-  const WIN_MIN = 300;
+  //
+  // From 100 rows: at 300, a day of 180 to 298 kept every row in, and
+  // each pick of the page laid them all out (#4652). The live list keeps
+  // 60, so it is never windowed.
+  const WIN_MIN = 100;
   let listItems = [], winKey = "", winAvg = 0, winSoon = 0, rowsMoved = false;
   const heights = new Map(); // a request's id, or a session's head → its height
   const gapAbove = el("div", "rt-gap"), gapBelow = el("div", "rt-gap");
@@ -3923,8 +3939,12 @@ function routingPage(part) {
     }
     reqs.classList.add("win");
     // out of sight (another view, the window hidden) nothing has a height:
-    // drawn as last measured, and measured once in sight again
+    // drawn as last measured, and measured once in sight again. A list
+    // already windowed keeps the rows it has: drawn for a 0-high sight
+    // they were fewer, and coming back put the rest in and measured every
+    // row's numbers again (#4652). In sight, the list's observer draws it
     const live = !!reqs.offsetParent;
+    if (!live && winKey && reqs.contains(gapAbove)) return;
     const listKey = [colA.className, reqs.clientWidth, reqs.style.getPropertyValue("--rt-cols"), document.documentElement.lang, visibleMetrics.join()].join("|");
     // other columns (a wider probe come in): the heights measured in the
     // old ones dropped, their average kept for the rows not drawn again
@@ -4730,7 +4750,7 @@ function routingPage(part) {
     stopPlays();
     if (!loaded) return;
     if (!pinned && !rp) cur = told();
-    if (cur) sync(true);
+    if (cur) sync("back");
     else empty();
     for (const r of underWay()) play(r.id);
     renderAll();
@@ -4847,6 +4867,7 @@ function routingPage(part) {
     subs.clear();
     for (const f of folds.values()) f.wire.remove();
     folds.clear();
+    builtFrom = [];
     chip.hidden = true;
     headOf = null;
     hubText();
@@ -7364,7 +7385,8 @@ function routingPage(part) {
     }));
   }
   // loaded when the view is shown, and again when the window comes back
-  new MutationObserver(() => { if (!$("#view-routing").hidden) loadGroups(); }).observe($("#view-routing"), { attributes: true, attributeFilter: ["hidden"] });
+  // back on the page, the same groups aren't drawn again either (#4652)
+  new MutationObserver(() => { if (!$("#view-routing").hidden) loadGroups(true); }).observe($("#view-routing"), { attributes: true, attributeFilter: ["hidden"] });
   window.addEventListener("focus", () => { if (shown()) loadGroups(true); });
   // newGroupWith: a new group's editor, opened with the model in it — a
   // model of a provider kept for routing groups that no group has, which

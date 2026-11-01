@@ -5946,7 +5946,9 @@ async function loadProvidersNow() {
   if (providersPage(view)) {
     magpie.call(view, "render", was);
     backAfterLoad($("#view-" + view));
-  } else renderProviders();
+  // under Routing: drawn when opened (#4652)
+  } else if (view === "routing") { providersBehind = true; markNewPartners(); }
+  else renderProviders();
   renderArchive();
   providersWhileFetching();
   if (view === "providers") loadUpstream();
@@ -6080,11 +6082,11 @@ $("#foldOff").onclick = () => {
 
 // One row per provider: logo, name, the agents pointed at it, key status.
 // Everything else lives in the editor, a dialog over the page.
+let providersBehind = false;
 function renderProviders(quiet) {
   if (accountArranging || providerArranging) { accountRenderPending = true; return; }
-  // Rebuilding the list empties the page for a moment, which clamps its
-  // scroll to the top; put it back so closing the editor leaves the reader
-  // where they were.
+  providersBehind = false;
+  // a rebuild clamps the scroll to the top: put it back
   const view = $("#view-providers"), top = view.scrollTop;
   markNewPartners();
   keepIcons($("#providers"), $("#offProviders"), $("#addSheet"), $("#excluded"));
@@ -23182,6 +23184,7 @@ async function show(v) {
   if (v !== "providers" && editing !== null) cancelEdit(true);
   // a plugin's page loads what it shows; back once it has
   magpie.call(v, "open")?.then?.(back);
+  if (v === "providers" && providersBehind) renderProviders();
   if (v === "providers" || v === "routing" || providersPage(v)) loadProviders().then(back, statusErr);
   // Routing's accounts show their windows as the Usage page read them
   // (#1833): what is kept, read in an ordinary way, never an asked read
