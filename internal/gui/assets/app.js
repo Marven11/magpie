@@ -428,6 +428,7 @@ function renderAgentsLoading() {
   page.setAttribute("aria-busy", "true");
   const list = $("#agents");
   list.replaceChildren();
+  homeAgentPrefRows();
   for (let i = 0; i < 5; i++) {
     const row = el("div", "row agent ag-sk-row");
     const who = el("div", "who");
@@ -454,6 +455,7 @@ function renderAgents() {
   page.removeAttribute("aria-busy");
   const list = $("#agents");
   list.replaceChildren();
+  homeAgentPrefRows(); // an opened row's, back in the page (ysm119)
   agentsLead(list);
   if (!state.agents.length) {
     const e = el("div", "empty-state");
@@ -19713,19 +19715,10 @@ function renderSettings() {
     (v) => savePrefs({ ...keep, noWSLAgents: v === "off" })));
   renderSessionTerminal(s, keep);
   renderBarIcon();
-  // what each row does, kept in its tooltip, the row saying its name
-  // alone as Settings › General does (#2120); Open at login's says where
-  // the Mac lists it: a launch agent, under App Background Activity
-  for (const [row, en] of [
-    ["#codexTitlesRow", "Names each thread in a hidden request of its own; same as the session, it goes on the session’s model, as Codex sends it when that is one of Codex’s own"],
-    ["#codexDescriptionsRow", "Writes each thread’s short description in a hidden request of its own; same as the session, it goes on the session’s model, as Codex sends it when that is one of Codex’s own"],
-    ["#codexPredictionsRow", "Guesses your next message for the composer, reading the whole conversation again each time; same as the session, it goes on the session’s model"],
-    ["#codexAutoReviewRow", "Decides an approval in your place when Codex’s approvals are on auto-review; Codex’s own pick is codex-auto-review, else the conversation’s model at low effort; on a ChatGPT Free plan, where codex-auto-review isn’t free, unset follows the session"],
-    ["#codexMemoriesRow", "Writes Codex’s memories of past threads, in the background; same as the session, on the session’s model, or on gpt-5.6-terra and gpt-5.6-luna when that is one of Codex’s own"],
-    ["#loginRow", document.body.classList.contains("mac")
-      ? "Opens in the menu bar with no window. System Settings › General › Login Items lists it under App Background Activity, not Open at Login"
-      : "Opens in the tray with no window"],
-  ]) $(row + " .who").title = t(en);
+  // what it does in its tooltip (#2120), and where the Mac lists it
+  $("#loginRow .who").title = t(document.body.classList.contains("mac")
+    ? "Opens in the menu bar with no window. System Settings › General › Login Items lists it under App Background Activity, not Open at Login"
+    : "Opens in the tray with no window");
   // the system's record, set on its own, not with the other choices
   $("#loginSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.login ? "on" : "off", (v) =>
     prefWrite(api("settings/login", { on: v === "on" }))));
@@ -21163,6 +21156,14 @@ function renderAgentPrefs() {
   const s = prefs;
   if (!s) return;
   homeAgentPrefRows();
+  // what each row does, in its tooltip (#2120)
+  for (const [row, en] of [
+    ["#codexTitlesRow", "Names each thread in a hidden request of its own; same as the session, it goes on the session’s model, as Codex sends it when that is one of Codex’s own"],
+    ["#codexDescriptionsRow", "Writes each thread’s short description in a hidden request of its own; same as the session, it goes on the session’s model, as Codex sends it when that is one of Codex’s own"],
+    ["#codexPredictionsRow", "Guesses your next message for the composer, reading the whole conversation again each time; same as the session, it goes on the session’s model"],
+    ["#codexAutoReviewRow", "Decides an approval in your place when Codex’s approvals are on auto-review; Codex’s own pick is codex-auto-review, else the conversation’s model at low effort; on a ChatGPT Free plan, where codex-auto-review isn’t free, unset follows the session"],
+    ["#codexMemoriesRow", "Writes Codex’s memories of past threads, in the background; same as the session, on the session’s model, or on gpt-5.6-terra and gpt-5.6-luna when that is one of Codex’s own"],
+  ]) $(row + " .who").title = t(en);
   // Codex's own models in multi-agent V1 (their subagents' tasks go as text),
   // so a GPT lead can run a subagent on magpie's other models (#141). Where
   // Codex's own multi_agent_v2 is on in the config magpie routes it wins, and
