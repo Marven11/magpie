@@ -485,6 +485,12 @@ type Settings struct {
 	// (gateway.searcher). "off" allows only configured search APIs.
 	// One that is gone, off or can't search gives way to magpie's pick.
 	Searcher string `json:"searcher,omitempty"`
+	// SearcherThen are the searchers asked in turn, in this order, when
+	// the one Searcher names fails or finds nothing, each written as
+	// Searcher is (axelburks on Discord: a second provider when the first
+	// fails). Read only while Searcher names one; magpie's own pick hands
+	// on to the next it would pick by itself.
+	SearcherThen []string `json:"searcherThen,omitempty"`
 	// SearcherEffort is how hard the searcher's model thinks as it searches
 	// (MOMO on Discord): a level of catalog.EffortRank, fitted to the
 	// model's own levels when it is asked, or empty to send none, the
@@ -2042,6 +2048,13 @@ func saveOwn(s Settings, recording, reads bool) error {
 		return fmt.Errorf("%q is not a reasoning effort for Claude Desktop's subagents", e)
 	}
 	s.Searcher = strings.TrimSpace(s.Searcher)
+	var then []string
+	for _, v := range s.SearcherThen {
+		if v = strings.TrimSpace(v); v != "" && v != "off" && v != s.Searcher && !slices.Contains(then, v) {
+			then = append(then, v)
+		}
+	}
+	s.SearcherThen = then
 	for _, e := range []*string{&s.VisionEffort, &s.SearcherEffort} {
 		if *e = strings.ToLower(strings.TrimSpace(*e)); *e != "" && !slices.Contains(catalog.EffortRank, *e) {
 			return fmt.Errorf("a model's reasoning must be one of %s, or empty for the default, not %q", strings.Join(catalog.EffortRank, ", "), *e)

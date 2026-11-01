@@ -784,11 +784,45 @@ func (s *Server) modelSearch(ctx context.Context, query string) (string, []Hit, 
 		said, hits, err = s.searchBy(ctx, p, model, query, searchEffort(p, model))
 	}
 	if named {
-		// a search the agent stopped waiting for is no failure of its
+		// those Settings names after it, in their order (SearcherThen),
+		// and no other
+		instead, first := "", err
+		if err != nil && ctx.Err() == nil {
+			for _, v := range settings.Load().SearcherThen {
+				q, m, why := namedSearcher(v)
+				if why != "" || q == nil || q.ID == p.ID && m == model || ctx.Err() != nil {
+					continue
+				}
+				if instead == "" {
+					ctx = searchingInstead(ctx, p, model, first)
+				}
+				instead = searcherOf(*q, m)
+				var next error
+				if said, hits, next = s.searchBy(ctx, *q, m, query, searchEffort(*q, m)); next == nil {
+					err = nil
+					break
+				}
+				err = errors.Join(err, next)
+			}
+			if err == nil {
+				// what Settings says is the first's failure, and who
+				// searched in its place
+				if !errors.Is(ctx.Err(), context.Canceled) {
+					namedFailed(p, model, first, instead)
+				}
+				return said, hits, nil
+			}
+		}
+		// a search the agent stopped waiting for is no failure of its.
+		// Settings says the first's own failure, those after it having
+		// failed too
 		if !errors.Is(ctx.Err(), context.Canceled) {
-			namedFailed(p, model, err)
+			namedFailed(p, model, first, "")
 		}
 		if err != nil {
+			if len(settings.Load().SearcherThen) > 0 {
+				return "", nil, fmt.Errorf("%w (the searchers picked in Settings › Web search, in their order: no other provider searches in their place)", err)
+			}
 			return "", nil, fmt.Errorf("%w (the searcher picked in Settings › Web search: no other provider searches in its place)", err)
 		}
 		return said, hits, nil
@@ -843,14 +877,23 @@ type SearchFailure struct {
 	Why          string // the error, when it neither found nothing nor didn't search
 	NothingFound bool   // it searched and named no page
 	NotSearched  bool   // it answered without searching (errNotSearched)
-	At           time.Time
+	// Instead is the searcher Settings names after it (SearcherThen) that
+	// searched in its place, "" when none did
+	Instead string
+	At      time.Time
 }
 
-func namedFailed(p provider.Provider, model string, err error) {
-	name := p.ID
-	if model != "" {
-		name += "/" + model
+// searcherOf is a searcher as Settings writes it: "<provider>/<model>",
+// or "<provider>" for one that searches with no model.
+func searcherOf(p provider.Provider, model string) string {
+	if model == "" {
+		return p.ID
 	}
+	return p.ID + "/" + model
+}
+
+func namedFailed(p provider.Provider, model string, err error, instead string) {
+	name := searcherOf(p, model)
 	lastNamedFail.Lock()
 	defer lastNamedFail.Unlock()
 	if err == nil {
@@ -859,7 +902,7 @@ func namedFailed(p provider.Provider, model string, err error) {
 		}
 		return
 	}
-	f := SearchFailure{Searcher: name, At: time.Now(), NotSearched: errors.Is(err, errNotSearched)}
+	f := SearchFailure{Searcher: name, At: time.Now(), NotSearched: errors.Is(err, errNotSearched), Instead: instead}
 	f.NothingFound = !f.NotSearched && errors.Is(err, errFoundNothing)
 	if !f.NothingFound && !f.NotSearched {
 		f.Why = strings.TrimPrefix(err.Error(), name+": ")

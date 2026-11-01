@@ -625,7 +625,7 @@ func searchState(s *settingsJSON) {
 	s.SearchAuto, s.SearchUnused = gateway.AutoSearcher(), gateway.SearcherUnused()
 	s.SearchEfforts, s.SearchEffortNow = gateway.SearchEfforts(), gateway.SearchEffortNow()
 	if f, ok := gateway.SearcherFailed(); ok {
-		s.SearchFailed = &searchFailedJSON{Searcher: f.Searcher, Why: f.Why, NothingFound: f.NothingFound, NotSearched: f.NotSearched, At: f.At}
+		s.SearchFailed = &searchFailedJSON{Searcher: f.Searcher, Why: f.Why, NothingFound: f.NothingFound, NotSearched: f.NotSearched, Instead: f.Instead, At: f.At}
 	}
 	s.SearchChoices = []searchChoiceJSON{}
 	for _, c := range gateway.Searchers() {
@@ -653,6 +653,7 @@ type searchFailedJSON struct {
 	Why          string    `json:"why,omitempty"`
 	NothingFound bool      `json:"nothingFound,omitempty"`
 	NotSearched  bool      `json:"notSearched,omitempty"`
+	Instead      string    `json:"instead,omitempty"` // who, named after it, searched in its place
 	At           time.Time `json:"at"`
 }
 
@@ -1559,11 +1560,19 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 				return
 			}
 		}
-		if v := strings.TrimSpace(in.Searcher); v != "" && v != "off" && v != cur.Searcher {
-			id, _, _ := strings.Cut(v, "/")
-			if !slices.ContainsFunc(gateway.Searchers(), func(c gateway.SearcherChoice) bool { return c.Provider.ID == id }) {
-				fail(rw, fmt.Errorf("%s can't search the web for other models", id))
-				return
+		// the searchers after the one named, set in their own row: a save
+		// that doesn't send them (prefsKeep has none) keeps them, and an
+		// empty list clears them
+		if in.SearcherThen == nil {
+			in.SearcherThen = cur.SearcherThen
+		}
+		for _, v := range append([]string{in.Searcher}, in.SearcherThen...) {
+			if v = strings.TrimSpace(v); v != "" && v != "off" && v != cur.Searcher && !slices.Contains(cur.SearcherThen, v) {
+				id, _, _ := strings.Cut(v, "/")
+				if !slices.ContainsFunc(gateway.Searchers(), func(c gateway.SearcherChoice) bool { return c.Provider.ID == id }) {
+					fail(rw, fmt.Errorf("%s can't search the web for other models", id))
+					return
+				}
 			}
 		}
 		if err := settings.Save(in); err != nil {

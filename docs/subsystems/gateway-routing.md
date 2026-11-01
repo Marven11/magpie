@@ -940,10 +940,19 @@ row of the search that answered says which searcher was asked first, for
 whom, why it didn't search, and which one searched in its place
 (`kindWhy`).
 
-A searcher named in Settings gives way to no other provider. Its error goes
-back to the model, and `webSearch` then asks the search APIs, when any are
-set up. `namedFailed` keeps the last search it didn't make, cleared when it
-next searches. Settings › Web search shows that (`SearcherFailed`,
+A searcher named in Settings gives way only to the ones the user put
+after it, `SearcherThen` (Settings › Web search's "If it fails" row), in
+their order. One that can't search now, is the one named, or is the same
+model is skipped. The first that searches answers, and the row says why
+the named one didn't search (`searchingInstead`). No other provider
+searches in their place (axelburks on Discord asked for this list). When
+every one fails, their errors go back to the model together, and
+`webSearch` then asks the search APIs, when any are set up. Covered by
+`TestPickedSearchersInTheirOrder`; `TestSearcherThenSaved` and
+`TestSearcherThenFromSettings` cover how the list is saved. Settings only
+takes a provider `Searchers()` offers. A save without the list keeps it,
+since the page's `prefsKeep` doesn't send it; `[]` clears it. `namedFailed` keeps the last search it didn't make, with the one that
+searched in its place (`Instead`), and clears it when it next searches. Settings › Web search shows that (`SearcherFailed`,
 `searchFailed`) at the start of the row's help, which wraps whole.
 Gearclickist on Discord picked Grok. Their grok-4.7 rows were about 1.3k
 tokens, the size of a request Grok ran no search for (one that searched
