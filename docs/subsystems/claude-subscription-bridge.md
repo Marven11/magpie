@@ -261,8 +261,15 @@ plan counts a `-p` request as another client's, at about twice the
 interactive mode's, and a `-p` run starts without the interactive mode's
 cache. A run the interactive mode can't take is refused before any Claude
 Code starts (`startRun`), and the request gets an error naming why and
-the setting (`claudeTUIErr`, `claudeNotTUIWhy`). That is when
-(`claudeTUI`, `claudePrint`):
+the setting (`claudeTUIErr`, `claudeNotTUIWhy`). The refusal is a 400
+(`tuiRefusal`): it is about the request or this computer, the same on
+every account, so the fallback doesn't ask the next account and no
+account rests for it. Until 11-01 it was a 502, which every account was
+asked in turn (#4778: 15 tries across 3 accounts, some rested). Its
+words avoid "Models" just before the error's type: "Models ›
+Replies…\",\"type\":\"invalid_request_error" read as a model not served
+(`provider.ModelUnserved`), which made the 400 retryable again. That is
+when (`claudeTUI`, `claudePrint`):
 
 - it is Claude Code in WSL whose home the probe didn't find, or, in
   the distro user's own folder, one Windows can't read (`wslread`);

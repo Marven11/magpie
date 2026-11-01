@@ -752,7 +752,8 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	}
 	var full *claudeFull
 	var refused *cliSchemaRefused
-	if err != nil && from != nil && !errors.As(err, &full) && !errors.As(err, &refused) && ctx.Err() == nil {
+	var tui *tuiRefusal
+	if err != nil && from != nil && !errors.As(err, &full) && !errors.As(err, &refused) && !errors.As(err, &tui) && ctx.Err() == nil {
 		log.Printf("claude: Claude Code could not go on from the conversation's saved session (%v); a new one is told the whole conversation", err)
 		req.branch = nil
 		return b.startRun(ctx, req, model, configDir, owner, nil)
@@ -943,7 +944,7 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	}
 	if !tui && code != "off" && code != "no-shim" {
 		cleanup()
-		return nil, nil, claudeTUIErr(claudeNotTUIWhy(req, binary, configDir))
+		return nil, nil, &tuiRefusal{claudeTUIErr(claudeNotTUIWhy(req, binary, configDir))}
 	}
 	noteClaudeRun(code)
 	var cmd *exec.Cmd
@@ -1365,8 +1366,20 @@ func claudeNotTUIWhy(req *Request, binary claudeCLI, configDir string) string {
 // the plan counts as another client's request and which starts without
 // the interactive mode's cache.
 func claudeTUIErr(why string) error {
-	return fmt.Errorf("Claude Code's interactive mode can't answer this request (%s), and magpie never runs it as claude -p instead; turning the interactive mode off in Settings › Models › Replies runs every request as -p", why)
+	// the settings come first: "Models" close before the error's
+	// "invalid_request_error" read as a model the account doesn't serve
+	// (provider.ModelUnserved), and the next account was asked
+	return fmt.Errorf("Claude Code's interactive mode, on in Settings › Models › Replies, can't answer this request (%s), and magpie never runs it as claude -p instead; turned off there, every request runs as -p", why)
 }
+
+// tuiRefusal is a request the interactive mode refuses for what it asks,
+// or for this computer: the same on every account, and no account's
+// fault. It is answered 400, which no account rests for and which isn't
+// asked of the next: a 502 was asked of every account in turn, 15 tries
+// across 3, and rested some of them (#4778).
+type tuiRefusal struct{ error }
+
+func (e *tuiRefusal) Unwrap() error { return e.error }
 
 // cliControl shares the SDK reply dispatcher with rewind, so unrelated or
 // late control responses cannot acknowledge a safety-context update.
@@ -5636,9 +5649,10 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 		code := 502
 		var full *claudeFull
 		var refused *cliSchemaRefused
+		var tui *tuiRefusal
 		if errors.As(err, &full) {
 			code = 503
-		} else if errors.As(err, &refused) {
+		} else if errors.As(err, &refused) || errors.As(err, &tui) {
 			code = 400
 		}
 		return writeError(w, from, code, name+": "+err.Error()), err.Error()
