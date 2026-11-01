@@ -211,6 +211,11 @@ type Request struct {
 	// Gemini's API of a model not named for images (drawCodeAssist).
 	draws bool
 
+	// strictSaid has a Chat request's tools say strict as each is set,
+	// false included, as OpenCode's own do: Zen's free tier
+	// (zenFreeTools).
+	strictSaid bool
+
 	Model      string
 	System     string
 	Messages   []Message

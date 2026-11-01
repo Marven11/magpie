@@ -4811,9 +4811,10 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		path, body = at, b
 	}
 	base := p.Base(to)
-	if p.IsOpenCode() && p.OpenCodeFree(gjson.GetBytes(body, "model").String()) {
-		// Zen's free tier answers at the inference API's URL alone (zenfree.go)
-		base = provider.OpenCodeFreeURL(base)
+	zenFree := p.IsOpenCode() && p.OpenCodeFree(gjson.GetBytes(body, "model").String())
+	if zenFree {
+		// Zen's free tier answers at OpenCode 2's paths alone (zenfree.go)
+		base = provider.OpenCodeFreeURL(base, to)
 	}
 	if mantleRoutes(p, to) {
 		// Bedrock Mantle serves each model under /v1 or /openai/v1
@@ -4894,10 +4895,27 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		}
 	}
 	if provider.OpenCodeURL(req.URL.String()) {
+		if zenFree {
+			// only what OpenCode 2.2.5 sends its gateway: an agent's own
+			// headers (Claude Code's x-stainless-*, Codex's originator)
+			// would mark the request as not OpenCode's (#3491)
+			kept := http.Header{}
+			for _, k := range []string{"Content-Type", "Anthropic-Version", "Anthropic-Beta"} {
+				if v := req.Header.Values(k); len(v) > 0 {
+					kept[k] = v
+				}
+			}
+			req.Header = kept
+		}
 		// as OpenCode itself sends it, which Zen's free tier asks for,
 		// with the conversation's own session, which Zen and Go route and
-		// cache by and answer 400 without
-		provider.OpenCodeClient(req.Header, openCodeSeed(in, body))
+		// cache by and answer 400 without, from the folder the agent says
+		// it works in
+		provider.OpenCodeClient(req.Header, openCodeSeed(in, body), openCodeDir(factsOf(to, body).dir))
+		if v := in.Get("x-opencode-project"); v != "" {
+			// OpenCode's own, asking through magpie
+			req.Header.Set("x-opencode-project", v)
+		}
 	}
 	if p.IsCline() {
 		// as Cline's desktop app sends it: its free models are 403'd
