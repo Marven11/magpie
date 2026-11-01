@@ -367,4 +367,18 @@ func TestRuleCompactAlma(t *testing.T) {
 		rec.Header().Get(modelHeader) != "b/big" || r.Rule == nil || r.Rule.Compact || r.Rule.N != 2 {
 		t.Fatalf("a quoted Alma ask: %d %s %q %+v", rec.Code, rec.Body.String(), rec.Header().Get(modelHeader), r.Rule)
 	}
+
+	// Alma's first compaction, which has no summary to merge (0.4.335's
+	// own prompts), by its ask and by its system prompt alone
+	first := "Here is the full conversation to compact. Produce the <analysis>, then the structured summary exactly as instructed. The conversation continues after your summary — do not conclude it.\n\n<conversation>\n[user]: tidy up my desktop\n</conversation>"
+	for name, body := range map[string]string{
+		"first ask":    alma(first),
+		"first system": `{"model":"group/r","messages":[{"role":"system","content":"You are compacting a long conversation so it can continue WITHOUT losing context. Your summary will REPLACE the earlier messages."},{"role":"user","content":"tidy up"}]}`,
+		"merge system": `{"model":"group/r","messages":[{"role":"system","content":"You are UPDATING an existing conversation summary with new activity so the conversation can continue WITHOUT losing context."},{"role":"user","content":"tidy up"}]}`,
+	} {
+		rec, r = post(body)
+		if rec.Code != 200 || rec.Header().Get(modelHeader) != "a/small" || r.Rule == nil || !r.Rule.Compact {
+			t.Errorf("Alma %s: %d %s %q %+v", name, rec.Code, rec.Body.String(), rec.Header().Get(modelHeader), r.Rule)
+		}
+	}
 }
