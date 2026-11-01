@@ -1574,11 +1574,14 @@ func (p Provider) ExposedOf(avail []catalog.Model) []catalog.Model {
 		return out
 	}
 	picks := p.Models
-	if _, _, ok := p.live(); ok && p.Account != nil && p.Account.unusable != nil {
+	if _, _, ok := p.live(); ok && p.Account != nil && (p.Account.unusable != nil || p.Account.listedOnly) {
 		// A Copilot account is served what its list offers it, less what
 		// it was refused: a pick its list doesn't have (#371: gpt-6-luna,
 		// not in a Student plan's) or that it was refused is left out;
-		// with none left, as if none were picked.
+		// with none left, as if none were picked. A ChatGPT account's
+		// too: a pick made while its list had gpt-5.5 stayed offered after
+		// the list dropped it, and the backend refused every request for
+		// it (#4772). It comes back when the list has it again.
 		picks = slices.DeleteFunc(slices.Clone(picks), func(id string) bool { _, ok := byID[id]; return !ok })
 	} else if p.Account != nil && p.Account.unusable != nil {
 		// with no list fetched, a pick the account can't be served (a
