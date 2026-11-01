@@ -2999,11 +2999,12 @@ const sentRowsKept = 4
 // hasn't got. The whole answer, built in a buffer to hash and send, was
 // 25 MB of a warm start's 183 MB live heap over a full history (16,600
 // sessions), kept between polls and grown again by each (#2278).
-func writeJSONRows[T any](rw http.ResponseWriter, r *http.Request, key string, rows []T, rest any) {
+// It returns the tag, or "" when a row could not be encoded.
+func writeJSONRows[T any](rw http.ResponseWriter, r *http.Request, key string, rows []T, rest any) string {
 	tail, err := json.Marshal(rest)
 	if err != nil {
 		fail(rw, err)
-		return
+		return ""
 	}
 	k, _ := json.Marshal(key)
 	head := append(append([]byte{'{'}, k...), ":["...)
@@ -3033,7 +3034,7 @@ func writeJSONRows[T any](rw http.ResponseWriter, r *http.Request, key string, r
 		b, err := encode(i)
 		if err != nil {
 			fail(rw, err)
-			return
+			return ""
 		}
 		if i > 0 {
 			whole.Write([]byte{','})
@@ -3049,7 +3050,7 @@ func writeJSONRows[T any](rw http.ResponseWriter, r *http.Request, key string, r
 	if had == tag {
 		rw.Header().Set("X-Magpie-Same", "1")
 		rw.WriteHeader(http.StatusOK)
-		return
+		return tag
 	}
 	sentRows.Lock()
 	was, ok := sentRows.rows[had]
@@ -3082,12 +3083,12 @@ func writeJSONRows[T any](rw http.ResponseWriter, r *http.Request, key string, r
 			b, err := encode(i)
 			if err != nil {
 				// the first pass encoded it: nothing else changes a row
-				return
+				return tag
 			}
 			item(b)
 		}
 		out.Write(end)
-		return
+		return tag
 	}
 	at := make(map[[16]byte][]int, len(was))
 	for j, s := range was {
@@ -3107,7 +3108,7 @@ func writeJSONRows[T any](rw http.ResponseWriter, r *http.Request, key string, r
 			run()
 			b, err := encode(i)
 			if err != nil {
-				return
+				return tag
 			}
 			item(b)
 			continue
@@ -3123,6 +3124,7 @@ func writeJSONRows[T any](rw http.ResponseWriter, r *http.Request, key string, r
 	}
 	run()
 	out.Write(end)
+	return tag
 }
 
 func fail(rw http.ResponseWriter, err error) {
