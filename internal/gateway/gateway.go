@@ -2909,7 +2909,15 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		// waited every request's whole thinking out.
 		hw.thinkingShown = !s.holdsThinking(c) || last
 		hw.ctx, hw.alive, hw.streams = r.Context(), kept, streams
-		if handsOver(streams, last, wantWhole, from, refusals) {
+		// a Claude subscription account's refusal of a big conversation
+		// isn't told again to the subscription's other accounts
+		// (tooBigToRetell), decided before the try, for its refusal not to
+		// be handed over to nobody
+		retell, noRetell := 0, false
+		if !last && c.claudeAccount() && slices.ContainsFunc(cands[i+1:], candidate.claudeAccount) {
+			retell, noRetell = tooBigToRetell(from, body)
+		}
+		if handsOver(streams, last || noRetell && len(otherThanClaudeAccounts(cands[i+1:])) == 0, wantWhole, from, refusals) {
 			// reasoning that went through as it came, and a refusal after
 			// it with nothing yet said: the next candidate answers in the
 			// same stream (refusalHandover; yhwangl on X)
@@ -3552,6 +3560,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				// refusal be: nobody else is, and the agent has it now
 				cands = cands[:i+1]
 				last = true
+			} else if noRetell {
+				// another Claude subscription account is a new Claude Code
+				// told the whole conversation, a cache written again on that
+				// account, for a refusal about the request's content that it
+				// most likely gives too: a 900K conversation refused cost a
+				// Pro account most of its 5 hours (Aisiverto on X). Other
+				// members are still asked
+				cands = append(cands[:i+1], otherThanClaudeAccounts(cands[i+1:])...)
+				last = i == len(cands)-1
+				log.Printf("claude: %s refused a conversation of ~%dK tokens; the subscription's other accounts aren't told it again", c.label(), retell/1000)
 			}
 		}
 		if !last && hw.failed() && hw.refused {

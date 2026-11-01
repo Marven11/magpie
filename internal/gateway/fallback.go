@@ -1927,6 +1927,40 @@ func matesFirst(left []candidate, c candidate) {
 	copy(left, append(mates, others...))
 }
 
+// retellMost is the size, in tokens, of a refused conversation past which
+// another Claude subscription account isn't told it again: each is a new
+// Claude Code that writes the whole of it to that account's cache.
+const retellMost = 100_000
+
+// claudeAccount is whether c is a Claude subscription account, served
+// through Claude Code (serveClaudeSubscription).
+func (c candidate) claudeAccount() bool {
+	return c.p.Account != nil && c.p.Account.Agent == "claude"
+}
+
+// tooBigToRetell is whether a conversation is too big to be told again to
+// another Claude subscription account after one refused it (retellMost),
+// and its size in tokens as estimate counts it.
+func tooBigToRetell(from provider.Protocol, body []byte) (int, bool) {
+	req, err := parse(from, body)
+	if err != nil {
+		return 0, false
+	}
+	n := estimate(req)
+	return n, n >= retellMost
+}
+
+// otherThanClaudeAccounts is left without its Claude subscription accounts.
+func otherThanClaudeAccounts(left []candidate) []candidate {
+	var kept []candidate
+	for _, x := range left {
+		if !x.claudeAccount() {
+			kept = append(kept, x)
+		}
+	}
+	return kept
+}
+
 // matesLast puts last, of the candidates left, the other keys or accounts
 // of the member c is of: what turns one of them away is in the request, so
 // it turns them all away the same, and the group is better spent on a
