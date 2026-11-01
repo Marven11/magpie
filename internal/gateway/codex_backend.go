@@ -3218,7 +3218,7 @@ func (s *Server) codexCompact(w http.ResponseWriter, r *http.Request, body []byt
 	rec, res, err := ask(body)
 	local := ""
 	if first := rec.status; lacksEndpoint(first) || itemNotFound(rec) || upstreamFailed(rec) || protectionRefused(first, rec.body.Bytes()) ||
-		err != nil && protectionWords.MatchString(err.Error()) {
+		summaryTooLarge(rec) || err != nil && protectionWords.MatchString(err.Error()) {
 		who, msg := compactFailure(body, rec)
 		if err != nil {
 			msg = "broken off: " + err.Error()
@@ -3420,6 +3420,20 @@ func upstreamFailed(rec *recorder) bool {
 }
 
 var upstreamFailedWords = regexp.MustCompile(`(?i)upstream request failed`)
+
+// summaryTooLarge is a summary request refused for its size: past the
+// vendor's byte cap (413; DeepSeek's "Failed to buffer the request body:
+// length limit exceeded", celestial_eagle_99230 on Discord) or past the
+// model's window. Codex's remote compaction asks nothing smaller after
+// either (it trims only by its token estimate against the catalog's
+// window, and a 1M window holds more bytes than the cap takes), so told
+// of it, Codex could neither compact nor go on. The summary is asked
+// again as text, its images left out and long outputs cut
+// (plainCompact), and compacted without a model when that is refused
+// too.
+func summaryTooLarge(rec *recorder) bool {
+	return rec.status == http.StatusRequestEntityTooLarge || overflowed(rec.status, rec.body.Bytes())
+}
 
 // itemNotFound is a 400 refusing an item of the input by its id, as Azure
 // OpenAI's and OpenAI's API answer one they never stored ("Item with id
