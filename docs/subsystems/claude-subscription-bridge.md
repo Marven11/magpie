@@ -608,6 +608,22 @@ exit status and the end of its stderr (`endedBefore`), as one that ends
 before it reads its input is (`whyEnded`). The tool-results path and
 `resume` already start a new run when the one they found has ended.
 
+A Claude Code whose output ends after its reply began (a `KStart` on the
+segment) and before the reply ended (its stop, a refusal, a result or an
+error) exited mid-reply: only the `message_start`, or part of the text,
+was heard. `readOutput` ends the segment with an error, "Claude Code
+exited before it ended its reply" and the end of its stderr
+(`replyUnended`, #4822), in `-p` and the interactive mode alike. Before
+it, the closed segment was a 200 with nothing or the words so far, as a
+reply that ended. Now `relay` answers a stream with nothing sent yet, and
+any reply not streamed, a 502, so the spare account may answer (the cut
+try keeps its usage row as handed on). A stream already sent ends in the
+protocol's error event: Anthropic's `error`, chat's `error` chunk with no
+`[DONE]`, Responses' `response.failed`. A reply not streamed whose words
+came before any failure is a failure too, as a translated reply cut short
+is (`errEndedShort`). `TestClaudeSubscriptionRunExitedMidReplyFails`
+holds it on all three protocols, streamed and not, `-p` and interactive.
+
 magpie ends a run (`abort`) by asking Claude Code to end with SIGTERM
 (`proc.Tree.Stop`) and kills its tree only once it has exited or
 `stopGrace` (5s) has passed; Windows kills the job at once. Claude Code
