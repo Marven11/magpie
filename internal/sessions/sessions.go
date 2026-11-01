@@ -1114,19 +1114,32 @@ func loadCache() {
 // parse starts from a clone), so a copy of the map is a snapshot; saves in a
 // row are folded into the latest, and one is written saveGap after the
 // last at the soonest.
-func saveCache() {
+func saveCache() { saveCacheWithin(saveGap) }
+
+// saveCacheWithin is saveCache written gap after the last save at the
+// soonest; saves folded into one wait the shortest gap any of them asked.
+func saveCacheWithin(gap time.Duration) {
 	snap := save{cacheFile{Version: cacheVersion, Zone: zone(), Parsers: parseVersions, Files: savable()}, CachePath()}
 	saving.Lock()
 	defer saving.Unlock()
+	if saving.next == nil || gap < saving.gap {
+		saving.gap = gap
+	}
 	saving.next = &snap
 	if saving.running {
+		if gap < saveGap {
+			select { // a save waiting out a longer gap looks again
+			case saveNow <- struct{}{}:
+			default:
+			}
+		}
 		return
 	}
 	saving.running = true
 	go func() {
 		for {
 			saving.Lock()
-			wait := saveGap - time.Since(saving.wrote)
+			wait := saving.gap - time.Since(saving.wrote)
 			if saving.hurry {
 				wait = 0
 			}
@@ -1135,6 +1148,7 @@ func saveCache() {
 				select {
 				case <-time.After(wait):
 				case <-saveNow:
+					continue // hurried, or a shorter gap asked: look again
 				}
 			}
 			saving.Lock()
@@ -1167,6 +1181,18 @@ func saveCache() {
 // read again then. Saved does not wait it out.
 var saveGap = time.Minute
 
+// A refresh that reads scanFiles files or more is a scan (a first start, a
+// lost or outdated index), not a poll catching up with a live session. Its
+// checkpoints wait scanSaveGap, not saveGap, and its last save waits for
+// nothing: under saveGap a scan's later checkpoints and its end waited a
+// minute after its first checkpoint, and a magpie quit or updated within
+// it kept a few hundred of 17,000 files, so each start read 22 GB of
+// rollouts again (15 to 28 s before Sessions showed, 70 to 94 s of CPU).
+var (
+	scanFiles   = 32
+	scanSaveGap = 15 * time.Second
+)
+
 // saveNow wakes a save waiting out saveGap once saving.hurry is set.
 var saveNow = make(chan struct{}, 1)
 
@@ -1175,8 +1201,9 @@ var saving struct {
 	*sync.Cond
 	running bool
 	next    *save
-	wrote   time.Time // when the last save was written
-	hurry   bool      // Saved is waiting: no save waits out saveGap
+	gap     time.Duration // the shortest gap the saves folded into next asked
+	wrote   time.Time     // when the last save was written
+	hurry   bool          // Saved is waiting: no save waits out saveGap
 }
 
 type save struct {
@@ -1370,6 +1397,10 @@ func refresh(want, all []file) {
 	// end: a first read of a long history on a slow disk runs for minutes,
 	// and a magpie quit before the end (its CPU full, #1665) kept nothing
 	// of it, so the next start read it all again.
+	checkpointGap, endGap := saveGap, saveGap
+	if len(jobs) >= scanFiles {
+		checkpointGap, endGap = min(scanSaveGap, saveGap), 0
+	}
 	tick := time.NewTicker(checkpointEvery)
 	defer tick.Stop()
 	unsaved := false
@@ -1387,7 +1418,7 @@ func refresh(want, all []file) {
 			}
 			mu.Lock()
 			if generation == cacheGeneration {
-				saveCache()
+				saveCacheWithin(checkpointGap)
 			}
 			mu.Unlock()
 			unsaved = false
@@ -1396,7 +1427,7 @@ func refresh(want, all []file) {
 	mu.Lock()
 	progress.finish()
 	if generation == cacheGeneration {
-		saveCache()
+		saveCacheWithin(endGap)
 	}
 }
 
