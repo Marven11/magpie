@@ -258,13 +258,18 @@ func (c *rowChunk) unpackReusing(dst *rowChunk, into []packedRow, strs []string,
 		}
 	}
 	next.Bytes += int64(len(next.Shapes)) * int64(unsafe.Sizeof([rowTexts]uint32{}))
+	var few [4]uint16
+	zones := few[:0]
+	for _, loc := range c.Locations {
+		zones = append(zones, zoneOf(loc))
+	}
 	for i := range next.Rows {
 		p := &next.Rows[i]
 		sec, nano, loc := int64(take()), int64(take()), take()
-		if loc >= uint64(len(c.Locations)) {
+		if loc >= uint64(len(zones)) {
 			return nil
 		}
-		p.setTime(time.Unix(sec, nano).In(c.Locations[loc]))
+		p.setTimeIn(time.Unix(sec, nano), zones[loc])
 		p.Shape = uint32(take())
 		if int(p.Shape) >= len(next.Shapes) {
 			return nil
