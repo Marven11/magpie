@@ -114,8 +114,13 @@ type QuotaWindow struct {
 	StartsAt *time.Time `json:"startsAt,omitempty"`
 	// TrayKind is, for the GUI only, how Settings names the window among
 	// those the menu bar can show (gui.withTrayKinds): "5h", "7d",
-	// "month"; empty on one the menu bar leaves out.
+	// "month", "7d:grok bot"; empty on one the menu bar can't say as a
+	// percent.
 	TrayKind string `json:"trayKind,omitempty"`
+	// TrayExtra is, for the GUI only, set on a window with a TrayKind that
+	// the menu bar shows only when picked (gui.trayChoices): money aside,
+	// one model's window, Cursor's Grok Bot.
+	TrayExtra bool `json:"trayExtra,omitempty"`
 	// matches further scopes pools whose membership isn't one model word.
 	matches func(string) bool
 	// partial is set on the windows of a reading that may leave some out:

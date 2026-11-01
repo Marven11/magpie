@@ -3,7 +3,9 @@
 // each ticked subscription with two or more windows the menu bar can show,
 // a pill picks which of them its card shows, by kind ("5h", "7d"), every
 // window unless some are picked. The pick is saved by provider, kept when
-// another setting is saved, and All windows takes it back. Hidden on
+// another setting is saved, and All windows takes it back. A window the
+// card shows only when picked (trayExtra: Opus, Cursor's Grok Bot,
+// CrazyJal on X) is offered too, and can be picked alone. Hidden on
 // Windows, whose tray shows the tooltip alone, and with no card of two
 // windows. Every language; narrow too. No backend, the API is faked here.
 const assert = require("node:assert/strict");
@@ -17,8 +19,10 @@ const assets = path.resolve(__dirname, "../assets");
 
 const quotas = [
   { provider: "claude", name: "Claude Code", icon: "claude-color", user: "a@b.c", plan: "Pro",
-    windows: [{ name: "5 hours", used: 42, trayKind: "5h" }, { name: "7 days", used: 18, trayKind: "7d" }, { name: "Opus", used: 90 }] },
+    windows: [{ name: "5 hours", used: 42, trayKind: "5h" }, { name: "7 days", used: 18, trayKind: "7d" }, { name: "Opus", used: 90, trayKind: "7d:opus", trayExtra: true }, { name: "Note", used: 0 }] },
   { provider: "copilot", name: "Copilot", icon: "githubcopilot", windows: [{ name: "Premium", used: 63, trayKind: "month" }] },
+  { provider: "cursor", name: "Cursor", icon: "cursor", user: "c@d.e",
+    windows: [{ name: "Weekly", used: 30, trayKind: "7d" }, { name: "Grok Bot", used: 64, trayKind: "7d:grok bot", trayExtra: true }, { name: "Total", used: 30, trayKind: "name:total", trayExtra: true }] },
 ];
 
 function server(lang, posts, over) {
@@ -85,20 +89,21 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await row.waitFor();
         assert.equal(await row.locator(".name").textContent(), name);
         // one pill: Claude's, the card with two windows the menu bar can
-        // show (Opus counts one model's use); Copilot has one, totals none
+        // show; Copilot has one, totals none, Cursor isn't ticked
         const pills = row.locator("#trayWindowsPick button");
         await page.waitForFunction(() => document.querySelectorAll("#trayWindowsPick button").length === 1);
         assert.equal((await pills.first().textContent()).trim(), "Claude Code · " + all);
         assert.equal(await pills.first().evaluate((b) => getComputedStyle(b).borderLeftWidth), "0px");
 
-        // the app's menu: All windows, then each window by its name
+        // the app's menu: All windows, then each window by its name, Opus
+        // (shown only when picked) too
         await pills.first().click();
         const menu = page.locator(".proto-menu");
         await menu.waitFor();
         assert.equal(await page.locator("select").count(), 0);
         const items = menu.locator(".pm-item");
-        assert.deepEqual((await items.locator(".pm-name").allTextContents()).map((s) => s.trim()), [all, five, seven]);
-        assert.deepEqual(await items.evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-checked"))), ["true", "false", "false"]);
+        assert.deepEqual((await items.locator(".pm-name").allTextContents()).map((s) => s.trim()), [all, five, seven, "Opus"]);
+        assert.deepEqual(await items.evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-checked"))), ["true", "false", "false", "false"]);
         await items.nth(1).click();
         assert.equal(posts.length, 0, "nothing is saved till the menu closes");
         await page.keyboard.press("Escape");
@@ -125,6 +130,42 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await context.close();
       });
     }
+
+    await t.test("a window shown only when picked, picked alone", async () => {
+      for (const [lang, , all] of LANGS) {
+        const posts = [];
+        const { context, page, errors } = await open(browser, lang, posts, { over: { trayUsages: ["cursor|*"], trayUsage: "cursor|*" } });
+        const pill = page.locator("#trayWindowsPick button");
+        await page.waitForFunction((s) => document.querySelector("#trayWindowsPick button")?.textContent.trim() === s, "Cursor · " + all);
+        // the vendor's window names, in the page's words where it has them
+        const [weekly, total] = await page.evaluate(() => [t("Weekly"), t("Total")]);
+        assert.notEqual(weekly, "", lang);
+        await pill.click();
+        const items = page.locator(".proto-menu .pm-item");
+        await items.first().waitFor();
+        assert.deepEqual((await items.locator(".pm-name").allTextContents()).map((s) => s.trim()), [all, weekly, "Grok Bot", total], lang);
+        await items.nth(2).click();
+        await page.keyboard.press("Escape");
+        await page.waitForFunction(() => document.querySelector("#trayWindowsPick button")?.textContent.trim() === "Cursor · Grok Bot");
+        assert.deepEqual(posts.at(-1).trayWindows, { cursor: ["7d:grok bot"] }, lang);
+        // Weekly with it is a pick too: the card shows Grok Bot only so
+        await pill.click();
+        await items.first().waitFor();
+        await items.nth(1).click();
+        await page.keyboard.press("Escape");
+        await page.waitForFunction((s) => document.querySelector("#trayWindowsPick button")?.textContent.trim() === s, "Cursor · " + weekly + " · Grok Bot");
+        assert.deepEqual(posts.at(-1).trayWindows, { cursor: ["7d", "7d:grok bot"] }, lang);
+        // Weekly alone, its usual window: no pick at all
+        await pill.click();
+        await items.first().waitFor();
+        await items.nth(2).click();
+        await page.keyboard.press("Escape");
+        await page.waitForFunction((s) => document.querySelector("#trayWindowsPick button")?.textContent.trim() === s, "Cursor · " + all);
+        assert.deepEqual(posts.at(-1).trayWindows, {}, lang);
+        assert.deepEqual(errors, []);
+        await context.close();
+      }
+    });
 
     await t.test("All windows takes a pick back", async () => {
       const posts = [];
