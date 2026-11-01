@@ -813,10 +813,15 @@ func apps() []*agent.Agent {
 	// CLI.app, where provider.KiroExecutable looks — never by ~/.kiro,
 	// which Kiro Crew and the Kiro IDE keep too. Bin is the path itself,
 	// so a copy the installer put where magpie's PATH doesn't reach is
-	// found as it was (Detected looks a Bin up by PATH alone)
-	if bin := provider.KiroExecutable(); bin != "" {
-		out = append(out, &agent.Agent{ID: "kiro-cli", Name: "Kiro CLI", Icon: "kiro-color", Bin: bin})
+	// found as it was (Detected looks a Bin up by PATH alone). It is
+	// listed when kiro-cli isn't found too, and then not Detected, so not
+	// a target: held still lists one uninstalled with what magpie gave it,
+	// for that to be unticked and taken out of ~/.kiro
+	bin := provider.KiroExecutable()
+	if bin == "" {
+		bin = "kiro-cli"
 	}
+	out = append(out, &agent.Agent{ID: "kiro-cli", Name: "Kiro CLI", Icon: "kiro-color", Bin: bin})
 	return out
 }
 
@@ -983,11 +988,12 @@ func targetByID(id string) *Target {
 // then given nothing.
 func Takes(q, kind string) (string, error) {
 	var a *agent.Agent
-	for _, app := range apps() {
-		if strings.EqualFold(app.ID, q) || strings.EqualFold(app.Name, q) {
-			a = app
+	for _, x := range apps() {
+		if strings.EqualFold(x.ID, q) || strings.EqualFold(x.Name, q) {
+			a = x
 		}
 	}
+	app := a != nil
 	if a == nil {
 		var err error
 		if a, err = agent.Find(q); err != nil {
@@ -995,6 +1001,11 @@ func Takes(q, kind string) (string, error) {
 		}
 	}
 	what := map[string]string{"instructions": "instructions", "mcp": "MCP servers", "skills": "skills"}[kind]
+	// an app found by its program alone (Kiro CLI) that isn't here: told
+	// so, not recorded and then given nothing, as Targets leaves it out
+	if app && a.Bin != "" && !a.Detected() {
+		return "", fmt.Errorf("%s isn't installed here; nothing reads its %s until it is", a.Name, what)
+	}
 	// gone for its CLI, as Targets leaves it out (#2254): told so, not
 	// recorded and then given nothing ("every agent already has it")
 	if a.CLIMissing() {

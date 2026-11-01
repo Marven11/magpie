@@ -175,3 +175,54 @@ func TestKiroMCP(t *testing.T) {
 		}
 	}
 }
+
+// Kiro CLI uninstalled after the library gave it a server is listed as
+// gone, on that server's row, for it to be unticked and taken out of
+// ~/.kiro (the same as any agent, TestGoneAgentListedToTakeOut). Found by
+// kiro-cli alone, it was in apps only while installed, so held never saw
+// it, and magpie's entry stayed in Kiro's mcp.json with nothing on the
+// page to take it out (#4769). Nor is an uninstalled one told it takes
+// anything.
+func TestKiroCLIUninstalledHeld(t *testing.T) {
+	h := sandbox(t)
+	holdCLI(t, h, "kiro-cli")
+	p := filepath.Join(h, ".kiro", "settings", "mcp.json")
+	ok(t)(SaveServer("", Server{Name: "fs", Transport: "stdio", Command: "npx", Args: []string{"-y", "@mcp/fs"}, Agents: []string{"claude", "kiro-cli"}}))
+	if !strings.Contains(read(t, p), "@mcp/fs") {
+		t.Fatalf("kiro-cli wasn't given the server:\n%s", read(t, p))
+	}
+
+	os.Remove(filepath.Join(h, "bin", "kiro-cli"))
+	os.Remove(filepath.Join(h, "bin", "kiro-cli.exe"))
+	if tg := targetByID("kiro-cli"); tg != nil {
+		t.Fatalf("kiro-cli is still a target uninstalled: %+v", tg)
+	}
+	for _, kind := range []string{"instructions", "mcp", "skills"} {
+		if id, err := Takes("kiro-cli", kind); err == nil || !strings.Contains(err.Error(), "isn't installed") {
+			t.Errorf("Takes(kiro-cli, %s) uninstalled: %q %v", kind, id, err)
+		}
+	}
+	gone := func() *AgentView {
+		t.Helper()
+		v, err := Read(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, a := range v.Agents {
+			if a.ID == "kiro-cli" {
+				return &v.Agents[i]
+			}
+		}
+		return nil
+	}
+	if a := gone(); a == nil || !a.Gone || a.MCP == "" {
+		t.Fatalf("kiro-cli, uninstalled holding a server, isn't listed as gone: %+v", a)
+	}
+	ok(t)(ServerAgents("fs", []string{"claude"}))
+	if strings.Contains(read(t, p), "@mcp/fs") {
+		t.Errorf("the server unticked is still in the uninstalled kiro-cli's mcp.json:\n%s", read(t, p))
+	}
+	if a := gone(); a != nil {
+		t.Errorf("kiro-cli, holding nothing, is still listed: %+v", a)
+	}
+}
