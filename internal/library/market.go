@@ -891,8 +891,8 @@ func marketCache(name string) string {
 }
 
 // popularSkills are skills.sh's most installed, read off its front page,
-// which lists them for itself; kept for six hours, and on disk for when
-// it can't be reached, else what magpie shipped with.
+// then the ones trending there that aren't among them; kept for six hours,
+// and on disk for when it can't be reached, else what magpie shipped with.
 func popularSkills() []skillsShEntry {
 	popular.Lock()
 	defer popular.Unlock()
@@ -916,8 +916,33 @@ func popularSkills() []skillsShEntry {
 	return list
 }
 
+// fetchPopular is skills.sh's front page's list, its 600 most installed,
+// then its trending page's that aren't on it. A trending skill's count is
+// of its recent installs, not all of them, so it isn't told.
 func fetchPopular() ([]skillsShEntry, error) {
-	b, err := get(skillsShURL+"/", "text/html", 8<<20)
+	list, err := skillsShList("/")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, e := range list {
+		seen[e.Source+"/"+e.SkillID] = true
+	}
+	if more, err := skillsShList("/trending"); err == nil {
+		for _, e := range more {
+			if !seen[e.Source+"/"+e.SkillID] {
+				seen[e.Source+"/"+e.SkillID] = true
+				e.Installs = 0
+				list = append(list, e)
+			}
+		}
+	}
+	return list, nil
+}
+
+// skillsShList is the list of skills a skills.sh page has in its data.
+func skillsShList(path string) ([]skillsShEntry, error) {
+	b, err := get(skillsShURL+path, "text/html", 8<<20)
 	if err != nil {
 		return nil, err
 	}
@@ -939,7 +964,7 @@ func searchSkillsSh(q string) ([]skillsShEntry, error) {
 	var body struct {
 		Skills []skillsShEntry `json:"skills"`
 	}
-	if err := getJSON(skillsShURL+"/api/search?"+url.Values{"q": {q}, "limit": {"40"}}.Encode(), &body); err != nil {
+	if err := getJSON(skillsShURL+"/api/search?"+url.Values{"q": {q}, "limit": {"200"}}.Encode(), &body); err != nil {
 		return nil, &SearchError{Source: "skills.sh", Err: err}
 	}
 	return slices.DeleteFunc(body.Skills, func(e skillsShEntry) bool { return !repoRe.MatchString(e.Source) || e.SkillID == "" }), nil
@@ -958,10 +983,7 @@ func MarketSkills(q string) ([]MarketSkill, error) {
 		}
 	}
 	if q == "" {
-		// a few each from the repositories with the most, for the first page
-		// not to be one author's
-		per := map[string]int{}
-		list = slices.DeleteFunc(list, func(e skillsShEntry) bool { per[e.Source]++; return per[e.Source] > 4 })
+		list = byRepo(list)
 	}
 	if len(q) >= 2 {
 		var found []skillsShEntry
@@ -971,9 +993,6 @@ func MarketSkills(q string) ([]MarketSkill, error) {
 				list = append(list, f)
 			}
 		}
-	}
-	if len(list) > 60 {
-		list = list[:60]
 	}
 	about := cachedAbout()
 	l, _ := loadLocked()
@@ -1009,6 +1028,23 @@ func MarketSkills(q string) ([]MarketSkill, error) {
 		out = append(out, ms)
 	}
 	return out, err
+}
+
+// byRepo is the most installed of each repository first, then each one's
+// second, and so on, for the first page not to be one author's; all of
+// them are there for the reader to go on to.
+func byRepo(list []skillsShEntry) []skillsShEntry {
+	nth := map[string]int{}
+	rounds := [][]skillsShEntry{}
+	for _, e := range list {
+		n := nth[e.Source]
+		nth[e.Source]++
+		if n == len(rounds) {
+			rounds = append(rounds, nil)
+		}
+		rounds[n] = append(rounds[n], e)
+	}
+	return slices.Concat(rounds...)
 }
 
 func (l *Library) haveSkill(source, id, name string) string {

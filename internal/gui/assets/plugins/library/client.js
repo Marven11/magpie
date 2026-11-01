@@ -5689,9 +5689,11 @@ magpie.plugin("library", (ctx) => {
   // What the market offers: popular and featured ones until the reader
   // searches. Kept across renders; asked for the first time a tab shows it.
   const market = {
-    mcp: { q: "", items: null, error: "", loading: false, seq: 0, timer: 0, custom: null },
-    skills: { q: "", items: null, error: "", loading: false, seq: 0, timer: 0 },
+    mcp: { q: "", items: null, error: "", loading: false, seq: 0, timer: 0, custom: null, shown: 0 },
+    skills: { q: "", items: null, error: "", loading: false, seq: 0, timer: 0, shown: 0 },
   };
+  // how many cards a list shows at first, and each Show more adds
+  const MARKET_PAGE = 60;
   const asked = new Set(); // skills whose description has been asked for
 
   async function fetchMarket(kind) {
@@ -5703,6 +5705,7 @@ magpie.plugin("library", (ctx) => {
       const r = await api("library/market/" + (kind === "mcp" ? "servers" : "skills") + "?q=" + encodeURIComponent(m.q.trim()));
       if (seq !== m.seq) return;
       m.items = r.items || [];
+      m.shown = MARKET_PAGE;
       m.error = r.error || "";
       // the source that didn't answer when the rest did (#1589)
       m.failed = r.failed ? { source: r.failed, cause: r.cause || "" } : null;
@@ -5815,7 +5818,25 @@ magpie.plugin("library", (ctx) => {
       grid.append(el("div", "mk-msg", q ? t("Nothing matches “{q}”.", { q }) : t("Nothing to show.")));
       return;
     }
-    for (const x of m.items) grid.append(kind === "mcp" ? serverCard(x) : skillCard(x));
+    for (const x of m.items.slice(0, m.shown)) grid.append(kind === "mcp" ? serverCard(x) : skillCard(x));
+    moreCards(kind, grid);
+  }
+
+  // The rest of a long list, a page at a time: the cards added under the
+  // ones shown, which stay where they are.
+  function moreCards(kind, grid) {
+    const m = market[kind];
+    const left = m.items.length - m.shown;
+    if (left <= 0) return;
+    const more = button(t("Show more ({n} left)", { n: left.toLocaleString(intlLang()) }), "mk-more", () => {
+      const from = m.shown;
+      m.shown += MARKET_PAGE;
+      more.before(...m.items.slice(from, m.shown).map((x) => kind === "mcp" ? serverCard(x) : skillCard(x)));
+      more.remove();
+      moreCards(kind, grid);
+      if (kind === "skills") describeSkills();
+    });
+    grid.append(more);
   }
 
   // An address searched for that nothing listed is at: say so, over the
@@ -6053,7 +6074,8 @@ magpie.plugin("library", (ctx) => {
     d.title = x.description || "";
     const foot = el("div", "mk-foot");
     // magpie's own skill has no count until skills.sh lists it
-    if (!x.featured || x.installs) {
+    // a trending skill's recent count isn't all its installs: none is told
+    if (x.installs) {
       const n = el("span", "mk-installs");
       n.append(svg(GLYPH.down, 11, 1.5), el("span", "", compact(x.installs)));
       n.title = t("{n} installs", { n: x.installs.toLocaleString(intlLang()) });
@@ -6083,7 +6105,7 @@ magpie.plugin("library", (ctx) => {
     who.append(el("div", "mk-name big", x.name));
     const meta = el("div", "mk-meta");
     meta.append(el("span", "mk-pub", x.source));
-    if (!x.featured || x.installs) meta.append(el("span", "mk-badge", t("{n} installs", { n: compact(x.installs) })));
+    if (x.installs) meta.append(el("span", "mk-badge", t("{n} installs", { n: compact(x.installs) })));
     if (x.official) meta.append(el("span", "mk-badge", t("Official")));
     who.append(meta);
     head.append(logo(x.icon, x.source), who);
