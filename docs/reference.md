@@ -1779,7 +1779,9 @@ each of these groups ordered by the share used.
   for it, else its list price, at the provider's price rate and rate
   windows; a model its vendor serves free costs nothing. DeepSeek's own
   API, and Command Code's and OpenCode Go's DeepSeek models, bill double
-  in their peak hours (weekdays 01:00–04:00 and 06:00–10:00 UTC), so a
+  in their peak hours (weekdays 01:00–04:00 and 06:00–10:00 UTC), and
+  Ollama Cloud's DeepSeek V4.1 Flash and V4 Pro in its own (weekdays
+  12:00–18:00 UTC; half price the rest of the time), so a
   DeepSeek model on two providers goes to whichever is cheaper at that
   hour. A tie on that goes to the cheaper cache read; members that still
   cost the same keep their order, and one with no known price goes after
