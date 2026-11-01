@@ -123,7 +123,16 @@ func parseClaudeUsage(text string, now time.Time) ([]QuotaWindow, error) {
 		w := QuotaWindow{Name: "5 hours", Used: used, Span: 5 * time.Hour}
 		if m[1] != "session" {
 			w.Name, w.Span = "7 days", week
-			if scope := strings.TrimSpace(m[2]); scope != "" && !strings.EqualFold(scope, "all models") {
+			// "Sonnet only" (Claude Code 2.1.316's week of Sonnet) is the
+			// Sonnet week: "7 days · Sonnet", counting sonnet, the window
+			// its seven_day_sonnet header keeps (claudeKinds). Read whole,
+			// it counted models named "sonnet-only", which none is, so
+			// routing never saw the Sonnet week used up (StringKe, #4532)
+			scope := strings.TrimSpace(m[2])
+			if s, ok := strings.CutSuffix(strings.ToLower(scope), " only"); ok && s != "" {
+				scope = strings.TrimSpace(scope[:len(s)])
+			}
+			if scope != "" && !strings.EqualFold(scope, "all models") {
 				w.Name, w.Model = "7 days · "+scope, claudeScopeModel(scope)
 			}
 		}
