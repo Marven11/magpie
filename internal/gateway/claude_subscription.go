@@ -881,6 +881,14 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 			from = nil
 		}
 	}
+	if from != nil && from == req.branch && !from.tui && claudeTUIOn() {
+		// a branch of a -p run's session, made before the interactive
+		// mode was turned on: -p's prompt isn't the interactive mode's,
+		// so the cache has nothing of it; a new interactive Claude Code
+		// is told the whole conversation, never a -p run
+		log.Printf("claude: a branch of a claude -p run's session goes to a new interactive Claude Code, told the whole conversation")
+		from, req.branch = nil, nil
+	}
 	if from != nil && from.cut != "" {
 		// a branch is a copy of the run's session as far as the reply
 		// that made the calls, a session of its own: Claude Code's
@@ -1169,9 +1177,6 @@ func claudePrint(req *Request, binary claudeCLI) (code, why string) {
 	}{
 		{len(req.Format.schema()) > 0, "schema", "a JSON schema"},
 		{urlImages(req.Messages) > 0, "image", "an image known by its URL"},
-		// a branch goes on in its session's mode: -p's prompt isn't the
-		// interactive mode's, and the cache has the one its run asked
-		{req.branch != nil && !req.branch.tui, "branch", "a branch of a claude -p run's session"},
 	} {
 		if c.is {
 			return c.code, c.why

@@ -267,9 +267,6 @@ the setting (`claudeTUIErr`, `claudeNotTUIWhy`). That is when
 - it is Claude Code in WSL whose home the probe didn't find, or, in
   the distro user's own folder, one Windows can't read (`wslread`);
 - the request has a JSON schema;
-- it is a branch of a `-p` run's session (`branch`: see
-  [Tool results another request answers first](#tool-results-another-request-answers-first));
-  a branch of an interactive run's session is interactive too.
 
 A first message of any length is pasted: a conversation told whole to
 a new Claude Code (one older than its session, or a client's own) can
@@ -976,8 +973,12 @@ session's lines up to the reply's uuid into a session file of its own
 next to it, its `sessionId` set to the copy's id (`cutSession`, which waits
 up to `cutWait` for that line to be whole), and starts with
 `--resume <copy>` in the mode its source run had (`savedSession.tui`):
-interactive for an interactive run, `-p` for a `-p` one (`branch` in
-`claudePrint` is only for the latter). Claude Code's own
+interactive for an interactive run, `-p` for a `-p` one while the
+interactive mode is off. With it on, a branch of a `-p` run's session (one
+made before it was turned on) is told the whole conversation in a new
+interactive Claude Code instead (`startRun`): its prompt isn't the
+interactive mode's, so the cache has nothing of it to read. Until 11-01
+it was refused with a 502 (`branch` in `claudePrint`). Claude Code's own
 `--fork-session --resume-session-at` cut is not used, as the interactive
 mode ignores `--resume-session-at` and resumes the whole session, and a
 `-p` branch of an interactive run's session read only tools and system from
