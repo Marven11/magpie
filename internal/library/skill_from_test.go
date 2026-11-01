@@ -553,3 +553,36 @@ func TestSkillLockOriginStale(t *testing.T) {
 		t.Errorf("a lock without a time: %v, want isn't from GitHub or a git repository", err)
 	}
 }
+
+// A skill installed from a folder of the user's own is theirs, whatever a
+// lock entry of its name says: an update doesn't turn it into the
+// repository's, and its row names no GitHub origin (#4645's lockOrigin,
+// held to the grouping's rule: no source, or one in ~/.agents/skills).
+func TestSkillLockOriginLeavesUsersFolder(t *testing.T) {
+	h := sandbox(t)
+	noGoose(t, h)
+	installed := time.Now().Add(-time.Hour).UTC()
+	ts := installed.Format(time.RFC3339Nano)
+	src := filepath.Join(h, "mine/skills")
+	skill(t, filepath.Join(src, "grill-me"), "grill-me", "mine")
+	ok(t)(InstallSkills(src, []string{"grill-me"}, nil))
+	writtenAt(t, realDir(skillDir("grill-me")), installed)
+	write(t, filepath.Join(h, ".agents/.skill-lock.json"), `{"version":3,"skills":{
+		"grill-me":{"source":"mattpocock/skills","sourceType":"github","installedAt":"`+ts+`","updatedAt":"`+ts+`"}}}`)
+	if s := mustLoad(t).skill("grill-me"); s.Source == nil || s.Source.Kind != "folder" {
+		t.Fatalf("installed from a folder: source %+v", s.Source)
+	}
+	v, err := Read(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range v.Skills {
+		if s.Name == "grill-me" && strings.Contains(s.Origin, "github.com") {
+			t.Errorf("a folder of the user's: origin %q", s.Origin)
+		}
+	}
+	UpdateSkill("grill-me", false)
+	if s := mustLoad(t).skill("grill-me"); s.Source == nil || s.Source.Kind != "folder" {
+		t.Errorf("after an update: source %+v, want the user's folder", s.Source)
+	}
+}

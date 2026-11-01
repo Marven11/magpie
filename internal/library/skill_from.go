@@ -124,8 +124,14 @@ func (tr *tracer) lockRepo(name, dir string) string {
 // that says when it wrote the skill's folder, and a folder that is the
 // one it wrote (lockRepo), tells the skill apart from another of its
 // name, and an update writes over it: a lock that says neither only
-// groups.
+// groups. It is the origin of a skill with no source, or one whose folder
+// is in ~/.agents/skills, as lockRepo's grouping has it: a folder of the
+// user's own elsewhere, or a skill with a source of its own, is not the
+// CLI's to be taken over by an update.
 func lockOrigin(s *Skill) (Source, bool) {
+	if s.Source != nil && !within(realDir(s.Source.Dir), realDir(sharedSkillsDir())) {
+		return Source{}, false
+	}
 	tr := &tracer{}
 	e, ok := tr.lock()[s.Name]
 	if !ok || !e.github || e.at.IsZero() || !madeBy(realDir(skillDir(s.Name)), e.at.Add(lockSlack)) {
