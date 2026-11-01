@@ -636,6 +636,19 @@ func TestTranslatorAPIError(t *testing.T) {
 	}
 }
 
+// An assistant row is told with its uuid, its place in the session, as
+// -p tells it: the bridge cuts a branch of the session there (bbfatx on
+// X). Told without it, no branch could be made of an interactive run's
+// session.
+func TestTranslatorTellsTheRowsUUID(t *testing.T) {
+	l := &lines{}
+	tr := newTranslator(l)
+	tr.row([]byte(`{"type":"assistant","uuid":"row-1","message":{"id":"m","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"toolu_1","name":"mcp__magpie__Read","input":{}}]}}`))
+	if len(l.out) != 1 || l.out[0]["uuid"] != "row-1" {
+		t.Fatalf("got %v", l.out)
+	}
+}
+
 // A Claude Code in WSL is pasted an image's path as the distro reads it,
 // and is handed TERM through WSLENV, the gateway's own names kept.
 func TestShimInWSL(t *testing.T) {

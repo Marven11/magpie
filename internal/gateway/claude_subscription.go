@@ -877,9 +877,24 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		}
 	}
 	if from != nil && from.cut != "" {
-		log.Printf("claude: tool results another request answered first go on in a branch of their run's session, told from the results (%d messages)", len(from.since))
-		args = append(args, "--resume", from.session, "--fork-session", "--resume-session-at", from.cut)
-	} else if from != nil {
+		// a branch is a copy of the run's session as far as the reply
+		// that made the calls, a session of its own: Claude Code's
+		// interactive mode doesn't take --resume-session-at, and resumes
+		// the whole session (Claude Code 2.1.316), so the branch was -p,
+		// and its prompt not the one the run's interactive mode had
+		// cached (bbfatx on X)
+		sid, err := cutSession(from.sessions, from.session, from.cut)
+		if err != nil {
+			log.Printf("claude: a branch of a run's session couldn't be cut (%v); a new Claude Code is told the whole conversation", err)
+			from, req.branch = nil, nil
+		} else {
+			log.Printf("claude: tool results another request answered first go on in a branch of their run's session, told from the results (%d messages)", len(from.since))
+			from.mu.Lock()
+			from.session, from.cut, from.gone = sid, "", false
+			from.mu.Unlock()
+		}
+	}
+	if from != nil {
 		args = append(args, "--resume", from.session)
 	} else if hasReply(req.Messages) {
 		// no run had the conversation: this one is told it whole, in one
@@ -1049,10 +1064,10 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		run.abort()
 		return nil, nil, err
 	}
-	if from != nil && from.cut == "" {
+	if from != nil {
 		// the session is the run's now: its file goes when the run does,
-		// unless the run is shelved in turn. A branch's is a copy of its
-		// own, named as Claude Code's init says.
+		// unless the run is shelved in turn; a branch's is the copy cut
+		// for it
 		from.taken()
 		run.mu.Lock()
 		run.sessionID = from.session
@@ -1146,7 +1161,9 @@ func claudePrint(req *Request, binary claudeCLI, prompt []map[string]any) (code,
 		{len(req.Format.schema()) > 0, "schema", "a JSON schema"},
 		{urlImages(req.Messages) > 0, "image", "an image known by its URL"},
 		{len(b) > tuiPromptMost, "big", "a first message over 400KB"},
-		{req.branch != nil, "branch", "a branch of another run's session"},
+		// a branch goes on in its session's mode: -p's prompt isn't the
+		// interactive mode's, and the cache has the one its run asked
+		{req.branch != nil && !req.branch.tui, "branch", "a branch of a claude -p run's session"},
 	} {
 		if c.is {
 			return c.code, c.why
@@ -1953,9 +1970,12 @@ type savedSession struct {
 	timer    *time.Timer
 	since    []Message // the turn's messages, once unshelved
 	// cut, for a branch of a live run's session (branch), is the line it
-	// is cut after: Claude Code resumes a copy of it there, and the file
-	// stays the run's
+	// is cut after: the run that takes it resumes a copy of the session
+	// as far as that line (cutSession), and the file stays the run's
 	cut string
+	// tui: the session was made by Claude Code's interactive mode; a
+	// branch of it is too, where it can be (claudePrint)
+	tui bool
 
 	cachePrefix cachePrefix
 
@@ -2072,17 +2092,17 @@ func (r *subscriptionRun) noteLines(uuid, model string, ids []string) {
 // prefix the cache has never seen: Aisiverto on X saw two requests 100ms
 // apart, one reading 900K from the cache and the other writing 877K to it,
 // a fifth of a Pro plan's five hours each. The run's session, cut after
-// the reply that made the calls (--resume-session-at, --fork-session for a
-// copy, as the run still has it), is the conversation as Claude Code asked
+// the reply that made the calls (a copy of it, cutSession, as the run
+// still has it), is the conversation as Claude Code asked
 // it of Anthropic, whose cache has it: the request's own run reads it and
 // is told only the results and what came after, as a turn after an
 // unshelve is. nil when the run is gone, the conversation before the reply
 // isn't the one it answered, or the run can't be resumed so: a client's
 // own cache marks, Claude Code in WSL (no session on disk), a session
-// taken back since (rewound), or runs that must be the interactive mode,
-// as the branch is -p.
+// taken back since (rewound), or, where runs must be the interactive mode,
+// a -p run's session, as its branch is -p too.
 func (b *subscriptionBridge) branch(req *Request, owner string) *savedSession {
-	if req.clientCache != nil || claudeTUIOnly() {
+	if req.clientCache != nil {
 		return nil
 	}
 	msgs := req.Messages
@@ -2127,7 +2147,7 @@ func (b *subscriptionBridge) branch(req *Request, owner string) *savedSession {
 			}
 		}
 		sid, sessions := run.sessionID, slices.Clone(run.sessions)
-		usable := !run.closed && !run.rewound && run.lean == req.leanPrompt && !run.clientMarks
+		usable := !run.closed && !run.rewound && run.lean == req.leanPrompt && !run.clientMarks && (run.tui || !claudeTUIOnly())
 		run.mu.Unlock()
 		if at == "" {
 			continue
@@ -2138,9 +2158,76 @@ func (b *subscriptionBridge) branch(req *Request, owner string) *savedSession {
 		if !usable || sid == "" || len(sessions) == 0 || said != told {
 			return nil
 		}
-		return &savedSession{session: sid, sessions: sessions, owner: owner, at: time.Now(), since: msgs[i:], cut: at, gone: true}
+		return &savedSession{session: sid, sessions: sessions, owner: owner, at: time.Now(), since: msgs[i:], cut: at, tui: run.tui, gone: true}
 	}
 	return nil
+}
+
+// cutWait is how long cutSession waits for the line it cuts after to be
+// in the session's file: Claude Code tells a reply on its output as it
+// writes it to the file.
+var cutWait = 2 * time.Second
+
+// cutSession copies session sid, from whichever of dirs has it, as far as
+// its line uuid, to a session of a new id beside it, and says the id:
+// Claude Code resumes the copy as the conversation stood after that line,
+// in either mode, and reads it from Anthropic's cache as the run asked it
+// (Claude Code 2.1.316: 14 tokens written). Each line is the session's
+// as written, its sessionId the copy's. An error when the line isn't
+// there within cutWait.
+func cutSession(dirs []string, sid, uuid string) (string, error) {
+	if sid == "" || uuid == "" || strings.ContainsAny(sid, `/\`) || strings.Contains(sid, "..") {
+		return "", errors.New("no session to cut")
+	}
+	mark := []byte(`"uuid":"` + uuid + `"`)
+	for deadline := time.Now().Add(cutWait); ; time.Sleep(20 * time.Millisecond) {
+		for _, dir := range dirs {
+			b, err := os.ReadFile(filepath.Join(dir, sid+".jsonl"))
+			if err != nil {
+				continue
+			}
+			end := cutAfter(b, mark, uuid)
+			if end < 0 {
+				continue
+			}
+			id := newUUID()
+			lines := bytes.ReplaceAll(b[:end], []byte(`"sessionId":"`+sid+`"`), []byte(`"sessionId":"`+id+`"`))
+			// a name no one has: nothing reads it before the run starts
+			path := filepath.Join(dir, id+".jsonl")
+			if err := os.WriteFile(path, lines, 0o600); err != nil {
+				_ = os.Remove(path)
+				return "", err
+			}
+			return id, nil
+		}
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("line %s isn't in session %s", uuid, sid)
+		}
+	}
+}
+
+// cutAfter is where in a session's lines b the whole line whose uuid is
+// uuid ends, -1 when none does yet; mark is its uuid as a line writes it.
+// A line half written is no line.
+func cutAfter(b, mark []byte, uuid string) int {
+	for at := 0; at < len(b); {
+		nl := bytes.IndexByte(b[at:], '\n')
+		if nl < 0 {
+			return -1
+		}
+		line := b[at : at+nl]
+		at += nl + 1
+		if !bytes.Contains(line, mark) {
+			continue
+		}
+		var l struct {
+			UUID string `json:"uuid"`
+		}
+		if json.Unmarshal(line, &l) == nil && l.UUID == uuid {
+			return at
+		}
+	}
+	return -1
 }
 
 // saved says its session's file is still there.

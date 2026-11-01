@@ -256,3 +256,37 @@ func TestClaudeAsideLeavesTheConversationsRun(t *testing.T) {
 		})
 	}
 }
+
+// A branch's session is the run's lines as far as the one it is cut
+// after, each its own session's; a line still being written is not there
+// yet, and one never written is an error, not a branch of the whole.
+func TestClaudeCutSessionCopiesAsFarAsTheLine(t *testing.T) {
+	was := cutWait
+	cutWait = 50 * time.Millisecond
+	t.Cleanup(func() { cutWait = was })
+	dirs := []string{t.TempDir(), t.TempDir()}
+	lines := `{"type":"user","uuid":"a","sessionId":"S"}` + "\n" +
+		`{"type":"assistant","parentUuid":"b","uuid":"b","sessionId":"S","message":{"content":"\"uuid\":\"c\""}}` + "\n" +
+		`{"type":"user","parentUuid":"b","uuid":"c","sessionId":"S"}` + "\n" +
+		`{"type":"assistant","uuid":"d","sessionId":"S"`
+	if err := os.WriteFile(filepath.Join(dirs[1], "S.jsonl"), []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id, err := cutSession(dirs, "S", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dirs[1], id+".jsonl"))
+	want := strings.ReplaceAll(strings.Join(strings.SplitAfter(lines, "\n")[:2], ""), `"sessionId":"S"`, `"sessionId":"`+id+`"`)
+	if id == "S" || string(got) != want {
+		t.Fatalf("copy %s:\n%s\nwant\n%s", id, got, want)
+	}
+	if src, _ := os.ReadFile(filepath.Join(dirs[1], "S.jsonl")); string(src) != lines {
+		t.Fatalf("the run's session changed: %s", src)
+	}
+	for _, at := range []string{"d", "z"} {
+		if id, err := cutSession(dirs, "S", at); err == nil {
+			t.Errorf("cut at %s: %s, want an error", at, id)
+		}
+	}
+}
