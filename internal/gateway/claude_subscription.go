@@ -3878,6 +3878,71 @@ func urlImages(msgs []Message) int {
 	return n
 }
 
+// urlImageBytes keeps the images fetchURLImages downloaded, by URL, for
+// the turns after: a conversation hands the same URLs over each turn.
+var urlImageBytes = struct {
+	sync.Mutex
+	got  map[string]Part
+	keys []string
+}{got: map[string]Part{}}
+
+// urlImagesKept is how many downloaded images urlImageBytes keeps.
+const urlImagesKept = 32
+
+// fetchURLImages fills in the bytes of msgs' images known by their URL
+// alone, in place: from public addresses only (publicClient), and each
+// must be an image. One that can't be had fails the request, saying which
+// and why.
+func fetchURLImages(ctx context.Context, msgs []Message) error {
+	fill := func(p *Part) error {
+		if p.Data != "" || p.URL == "" {
+			return nil
+		}
+		urlImageBytes.Lock()
+		got, ok := urlImageBytes.got[p.URL]
+		urlImageBytes.Unlock()
+		if !ok {
+			b, _, err := FetchImage(ctx, publicClient, p.URL)
+			if err != nil {
+				return fmt.Errorf("couldn't fetch the image at %s for the interactive mode: %v", p.URL, err)
+			}
+			mt := http.DetectContentType(b)
+			if !strings.HasPrefix(mt, "image/") {
+				return fmt.Errorf("couldn't use the image at %s: it isn't an image (it reads as %s)", p.URL, mt)
+			}
+			got = Part{MediaType: mt, Data: base64.StdEncoding.EncodeToString(b)}
+			urlImageBytes.Lock()
+			if _, ok := urlImageBytes.got[p.URL]; !ok {
+				urlImageBytes.keys = append(urlImageBytes.keys, p.URL)
+				if len(urlImageBytes.keys) > urlImagesKept {
+					delete(urlImageBytes.got, urlImageBytes.keys[0])
+					urlImageBytes.keys = urlImageBytes.keys[1:]
+				}
+			}
+			urlImageBytes.got[p.URL] = got
+			urlImageBytes.Unlock()
+		}
+		p.MediaType, p.Data = got.MediaType, got.Data
+		return nil
+	}
+	for i := range msgs {
+		for j := range msgs[i].Parts {
+			part := &msgs[i].Parts[j]
+			if part.Kind == Image {
+				if err := fill(part); err != nil {
+					return err
+				}
+			}
+			for k := range part.Images {
+				if err := fill(&part.Images[k]); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // historyEnd is where the turn to answer begins in msgs: the message after
 // the last reply that calls no tool. 0 when there is no such reply, or
 // nothing after it, and the messages are told as one turn.
@@ -5441,6 +5506,13 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 				req.SafeguardBeta = beta
 				break
 			}
+		}
+	}
+	if name == "Claude Code" && claudeTUIOn() && urlImages(req.Messages) > 0 {
+		// the interactive mode is pasted files: an image known by its URL
+		// is downloaded first, as -p's Claude Code had Anthropic fetch it
+		if err := fetchURLImages(r.Context(), req.Messages); err != nil {
+			return writeError(w, from, 400, "Claude Code: "+err.Error()), err.Error()
 		}
 	}
 	// its model searches the web with magpie's tool, which magpie answers

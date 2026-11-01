@@ -1,11 +1,16 @@
 package gateway
 
 import (
+	"encoding/base64"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/yetone/magpie/internal/claudetui"
+	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/testenv"
 )
 
@@ -100,5 +105,55 @@ func TestClaudeTUIClientCacheKeepsItsOwn(t *testing.T) {
 	}
 	if n := len(h.runs()); n != 1 {
 		t.Fatalf("the next turn started %d runs", n)
+	}
+}
+
+// An image known by its URL alone is downloaded for the interactive mode,
+// which is pasted files: Claude Code is handed its bytes, and the turns
+// after hand the same URL over without downloading it again. One that
+// isn't an image, or can't be had, fails the request saying why, and no
+// Claude Code runs it as -p instead.
+func TestClaudeTUIImageByURL(t *testing.T) {
+	h := tuiScriptHarness(t, "")
+	srv, hits := secret(t, string(pngBytes))
+	allowPrivate(t, "127.0.0.1")
+	ask := func(url string, said ...string) (int, string) {
+		t.Helper()
+		img := `{"role":"user","content":[{"type":"image","source":{"type":"url","url":"` + url + `"}},{"type":"text","text":"what is it"}]}`
+		msgs := []string{img}
+		for _, m := range said {
+			msgs = append(msgs, `{"role":"assistant","content":"ok"}`, fmt.Sprintf(`{"role":"user","content":%q}`, m))
+		}
+		body := `{"model":"claude-sonnet-5","max_tokens":100,"system":"rules","tools":[{"name":"read","input_schema":{"type":"object"}}],"messages":[` + strings.Join(msgs, ",") + `]}`
+		rec := httptest.NewRecorder()
+		return h.s.serveClaudeSubscription(rec, httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body)), provider.Anthropic, h.p, "claude-sonnet-5", []byte(body), &Usage{})
+	}
+	if code, msg := ask(srv.URL + "/a.png"); code != 200 {
+		t.Fatalf("%d %s", code, msg)
+	}
+	if code, msg := ask(srv.URL+"/a.png", "and now"); code != 200 {
+		t.Fatalf("next turn: %d %s", code, msg)
+	}
+	runs := h.runs()
+	if len(runs) != 1 || hits.Load() != 1 {
+		t.Fatalf("%d runs, the image downloaded %d times", len(runs), hits.Load())
+	}
+	data := base64.StdEncoding.EncodeToString(pngBytes)
+	for _, log := range runs {
+		if !strings.Contains(log, `"data":"`+data+`"`) || !strings.Contains(log, `"media_type":"image/png"`) {
+			t.Fatalf("Claude Code wasn't handed the image's bytes: %s", log)
+		}
+	}
+	notImage, _ := secret(t, `{"admin_token":"s3cret"}`)
+	if code, msg := ask(notImage.URL + "/status"); code != 400 || !strings.Contains(msg, "isn't an image") || strings.Contains(msg, "s3cret") {
+		t.Fatalf("not an image: %d %s", code, msg)
+	}
+	gone := httptest.NewServer(http.NotFoundHandler())
+	defer gone.Close()
+	if code, msg := ask(gone.URL + "/b.png"); code != 400 || !strings.Contains(msg, "404") {
+		t.Fatalf("a missing image: %d %s", code, msg)
+	}
+	if n := len(h.runs()); n != 1 {
+		t.Fatalf("a request whose image couldn't be had ran: %d runs", n)
 	}
 }

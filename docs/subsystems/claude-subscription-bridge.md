@@ -266,13 +266,21 @@ the setting (`claudeTUIErr`, `claudeNotTUIWhy`). That is when
 
 - it is Claude Code in WSL whose home the probe didn't find, or, in
   the distro user's own folder, one Windows can't read (`wslread`);
-- the request has a JSON schema, an image
-  known only by its URL (`urlImages`: the helper pastes files, and has no
-  bytes of it), or words over 400KB (`tuiPromptMost`, images not counted),
-  which a paste can't carry;
+- the request has a JSON schema, or words over 400KB (`tuiPromptMost`,
+  images not counted), which a paste can't carry;
 - it is a branch of a `-p` run's session (`branch`: see
   [Tool results another request answers first](#tool-results-another-request-answers-first));
   a branch of an interactive run's session is interactive too.
+
+An image known only by its URL is downloaded first
+(`fetchURLImages`, in `serveClaudeSubscription`): the helper pastes
+files, where `-p`'s Claude Code had Anthropic fetch the URL. It goes
+through `publicClient` (public addresses only, as every image fetch), it
+must read as an image (`http.DetectContentType`), and the last 32 are
+kept by URL (`urlImageBytes`), since a conversation hands the same URLs
+over each turn. One that can't be had fails the request, saying which
+and why; no Claude Code runs it. With the bytes in, the request is an
+ordinary one with a pasted image (`TestClaudeTUIImageByURL`).
 
 Safeguards are taken: interactive Claude Code reads
 `CLAUDE_CODE_EXTRA_BODY` only as it starts (2.1.316: a later
@@ -312,8 +320,7 @@ subscription with Only switch serves nothing through magpie and shows no
 row.
 
 A turn the interactive mode can't take ends the run, and the next starts
-anew: a turn with an image known by its URL (refused, as above), one
-that takes earlier turns back, an effort change. A run given up on
+anew: a turn that takes earlier turns back, an effort change. A run given up on
 (`letGo`) is not taken back, since the interactive mode can't answer a
 control request to stop a turn.
 
@@ -544,8 +551,7 @@ before the run is let go and its file removed (`branchAt`, a cut copy as
 in [Tool results another request answers first](#tool-results-another-request-answers-first)),
 and a new interactive run resumes the copy, told only the turn's
 messages. Before, every turn after a suggestion was told whole to a new
-run (bbfatx on X). There is no cut with a client's own cache marks, with
-an image known only by its URL, or for a run with no session or no line;
+run (bbfatx on X). There is no cut with a client's own cache marks, or for a run with no session or no line;
 then the turn is told whole, as before.
 `TestClaudeInteractiveSideQuestionBranchesBeforeIt` holds it.
 
