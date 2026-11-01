@@ -14279,6 +14279,11 @@ function ringName(w) {
   return w.window ? poolWord(w.pool) + " " + shortWindow(w.window) : shortWindow(w.name);
 }
 
+// quotaall.js: accounts together, loaded once asked for
+function quotaAllJS() {
+  return (quotaAllJS.p ||= import("./quotaall.js").then(() => renderQuotas(), () => {}));
+}
+const quotaAllOf = (...a) => window.quotaAll ? quotaAll(...a) : void quotaAllJS();
 // tiersText: a family's windows, one a line, for its tooltip.
 function tiersText(w) {
   return (w.tiers || []).map((x) => t(x.name) + " " + quotaText(x)
@@ -15735,8 +15740,7 @@ function ownLine(sub) {
   return line;
 }
 
-// lazy: drawn only if something the panel shows changed (a load's answer,
-// the window coming back), not each time it is asked (#3192)
+// lazy: drawn only if what the panel shows changed (#3192)
 function renderQuotas(lazy) {
   renderPanelQuota(lazy);
   // the tray panel never shows the Usage page: its cards and curves are
@@ -15813,6 +15817,8 @@ function renderQuotas(lazy) {
       s.title = keysSumTip(subs);
       head.append(s);
     }
+    const all = !keys && several && quotaAllOf(subs);
+    if (all) card.append(all);
     // many accounts (Linx on X: twenty-odd on one plugin, 顶成擎天柱):
     // the same, each still a row of its own
     const accts = !keys && several && subs.length > ACCTS_FOLD;
@@ -17214,16 +17220,10 @@ function renderPanelUse() {
   fit();
 }
 
-// The Usage tab: accounts under their vendor, each window a ring with its
-// share in it, when the plan ends and the windows start again under the
-// account; balances as figures. All in the Usage page's order, a balance
-// where it was put there, not after the plans (#1510, JokerQyou); balances
-// side by side share one grid.
-//
-// lazy: kept as it is when nothing it draws from has changed, so the
-// window's focus and visibility coming back neither rebuild the cards nor
-// start the skeleton's shimmer again (#3192). The minute is in it, for
-// the deadlines it words by the clock.
+// The Usage tab: accounts under their vendor, a ring a window, balances as
+// figures in one grid, in the Usage page's order (#1510).
+// lazy: kept while nothing it draws from changed (#3192); the minute is in
+// it, for the deadlines it words by the clock.
 function renderPanelQuota(lazy) {
   const box = $("#panelQuota");
   if (mode !== "panel" || !box) return;
@@ -17310,6 +17310,8 @@ function renderPanelQuota(lazy) {
       head.append(m);
     }
     g.append(head);
+    const all = qs.length > 1 && quotaAllOf(qs, "pq-all", 3);
+    if (all) g.append(all);
     // the accounts in full; none of them, the one in sight
     const full = qs.length > 1 ? qs.filter((q) => usageAcctOpen(q, qs)) : qs;
     for (const q of full.length ? full : [usageShown(qs)]) g.append(panelQuotaCard(q));
