@@ -2117,22 +2117,37 @@ function routingPage(part) {
   }
 
   // hueOf is the colour an agent's requests and answers fly in, and it is
-  // marked with: its maker's own where it has one, else one of the rest
-  // picked by its id, so it stays the same from one request to the next.
-  // None is red: red on this page is a failure, and an agent marked in it
-  // read as one (zhouatie on X: "openai" drew rose, its dot and wire red).
+  // marked with. PALETTE is twelve quiet colours of one lightness and
+  // chroma around the wheel, Claude's clay first; an agent asks for its
+  // maker's (HUES, a place in it) or one by its id, and is given the first
+  // from there no other agent has had, kept for as long as the page is
+  // open. Picked by id alone, 49 of 59 agents shared 8 colours and two
+  // on the stage at once were often marked alike (Pkh on Discord). The
+  // agents shown together (hues) are kept apart when more than twelve
+  // have come. None is red: red on this page is a failure, and an agent
+  // marked in it read as one (zhouatie on X: "openai" drew rose).
   // routing-agent-hue-not-red.test.cjs holds every colour here away from it.
+  const PALETTE = ["#d97757", "#bd8638", "#a59234", "#849e4a", "#5aa66c", "#25a98f", "#00a6b0", "#2e9fc9", "#5e95d7", "#858ad7", "#a47fca", "#bb77b1"];
   const HUES = {
-    claude: "#d97757", codex: "#6366f1", gemini: "#0ea5e9", copilot: "#a855f7", cursor: "#14b8a6", opencode: "#eab308",
-    crush: "#ec4899", goose: "#84cc16", pi: "#10b981", omp: "#d946ef", omo: "#7c3aed", dsh: "#06b6d4", commandcode: "#f97316",
-    mimocode: "#3b82f6", deveco: "#3c99cc",
+    claude: 0, codex: 9, gemini: 7, copilot: 10, cursor: 5, opencode: 2, crush: 11, goose: 3, pi: 4, omp: 11, omo: 10, dsh: 6,
+    commandcode: 1, mimocode: 8, deveco: 7,
   };
-  const SPARE = ["#8b5cf6", "#22c55e", "#0d9488", "#0891b2", "#ca8a04", "#db2777", "#2563eb", "#65a30d"];
-  function hueOf(id) {
-    if (HUES[id]) return HUES[id];
-    let h = 0;
-    for (const c of String(id || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    return SPARE[h % SPARE.length];
+  const given = new Map(); // agent → its colour
+  function hueOf(id, near) {
+    let c = given.get(id);
+    if (c && !near?.has(c)) return c;
+    let h = HUES[id];
+    if (h == null) { h = 0; for (const ch of String(id || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0; }
+    const had = new Set(given.values()), from = (k) => PALETTE[(h + k) % PALETTE.length];
+    const ks = [...PALETTE.keys()];
+    c = from(ks.find((k) => !had.has(from(k)) && !near?.has(from(k))) ?? ks.find((k) => !near?.has(from(k))) ?? 0);
+    given.set(id, c);
+    return c;
+  }
+  // hues: the agents shown together, each its own colour
+  function hues(ids) {
+    const near = new Set();
+    for (const id of ids) near.add(hueOf(id, near));
   }
 
   // foldersOf: the folders routes say, each once, in their order;
@@ -2329,8 +2344,10 @@ function routingPage(part) {
     const nodes = [...keep, ...ags.filter((a) => !keep.includes(a))].map((id) => agentNode(id).node);
     if (nodes.some((x, i) => srcs.children[i] !== x) || srcs.children.length !== nodes.length) srcs.replaceChildren(...nodes);
     srcs.classList.toggle("many", ags.length > 1);
+    hues(ags);
     for (const id of ags) {
       const a = agents.get(id), r = rs.filter((x) => x.agent === id).pop(), ag = agentOf(id);
+      for (const n of [a.node, a.wire]) n.style.setProperty("--agent", hueOf(id));
       if (a.icon !== (ag?.icon || "generic")) { a.icon = ag?.icon || "generic"; a.ic.replaceChildren(icon(a.icon)); }
       setText(a.name, agentName(id));
       // one agent working in more than one folder at once: which, by
@@ -2565,6 +2582,12 @@ function routingPage(part) {
   // lightRow lights a row and its wire: on for the one answering or that
   // answered the request shown, now and a flowing wire only while a
   // request is with it (#2386)
+  // tint: a fold's or a group's wire in the colour of the row lit under
+  // it, or in none
+  function tint(wire, from) {
+    const c = from?.style.getPropertyValue("--agent");
+    if (c) wire.style.setProperty("--agent", c); else wire.style.removeProperty("--agent");
+  }
   function lightRow(li, wire, on, now) {
     li.classList.toggle("on", on);
     li.classList.toggle("now", on && now);
@@ -2580,8 +2603,8 @@ function routingPage(part) {
     const trying = new Map(), busy = new Set(); // a seat → the request it answers now
     for (const r of rs) for (const tr of r.tries) if (!tr.done) { trying.set(tryseat(r, tr), r); busy.add(r.agent); }
     askUnnamed(rs);
-    const onWire = new Set();
-    for (const f of flying.values()) { onWire.add(f.id); busy.add(f.agent); }
+    const onWire = new Map(); // a seat → the agent whose magpie is at it
+    for (const f of flying.values()) { onWire.set(f.id, f.agent); busy.add(f.agent); }
     // what each request found, read once a pass: hundreds of a route's
     // keys each read their route's whole list again (#3164)
     const found = new Map();
@@ -2695,7 +2718,12 @@ function routingPage(part) {
       row.li.classList.toggle("low", !!(!w.routing && w.known && w.used >= 90));
       row.li.classList.toggle("rest", !!resting || gave.has(id));
       row.li.classList.toggle("left", !!w.unlisted || !!w.window);
-      if (on) row.wire.style.setProperty("--agent", hueOf(r.agent));
+      // in the colour of the agent whose request is on it: the one it
+      // answers now, the one whose magpie is at it, else the request it
+      // answered, and none once it is off, so a row kept from before
+      // never shows the last agent's colour (Pkh on Discord)
+      const by = trying.get(id)?.agent ?? onWire.get(id) ?? r.agent;
+      if (on) row.wire.style.setProperty("--agent", hueOf(by)); else row.wire.style.removeProperty("--agent");
       row.wire.classList.toggle("rest", !!resting || !!w.unlisted || !!w.window);
     }
     // a fold tells of its keys together: the one answering or that
@@ -2715,7 +2743,7 @@ function routingPage(part) {
       const tip = on?.st.title ? f.st.textContent : "";
       if (f.st.title !== tip) { if (tip) f.st.title = tip; else f.st.removeAttribute("title"); }
       lightRow(f.li, f.wire, !!on, ms.some((m) => has(m, "now")));
-      if (on) f.wire.style.setProperty("--agent", on.wire.style.getPropertyValue("--agent"));
+      tint(f.wire, on?.wire);
       return !!ms.length && resting + held === ms.length;
     };
     for (const f of folds.values()) {
@@ -2740,7 +2768,7 @@ function routingPage(part) {
       s.li.classList.remove("rest");
       const lit = ms.find((row) => row.li.classList.contains("now")) || ms.find((row) => row.li.classList.contains("on"));
       lightRow(s.li, s.wire, !!lit, ms.some((row) => row.li.classList.contains("now")));
-      if (lit) s.wire.style.setProperty("--agent", lit.wire.style.getPropertyValue("--agent"));
+      tint(s.wire, lit?.wire);
     }
     for (const [id, a] of agents) a.wire.classList.toggle("live", busy.has(id));
     flowSoon();
@@ -7577,6 +7605,7 @@ function routingPage(part) {
       }
     }
     pAg = pPlace(pAg, ags.slice(0, P_SIDE));
+    hues(pAg);
     pDst = pPlace(pDst, [...dst.keys()].slice(0, P_SIDE));
     const keep = new Set();
     pFrom.replaceChildren(...pAg.map((id) => {
@@ -7640,7 +7669,7 @@ function routingPage(part) {
     return new Promise((res) => {
       pTrips.push({ dot, n, back, t0: performance.now(), ms, res });
       if (!pRaf) pRaf = requestAnimationFrame(pTick);
-    }).finally(() => { if (!--n.lit) n.wire.classList.remove("on"); });
+    }).finally(() => { if (!--n.lit) { n.wire.classList.remove("on"); if (n.wire.classList.contains("ps-out")) n.wire.style.removeProperty("--agent"); } });
   }
   function pTick(ts) {
     pRaf = 0;
