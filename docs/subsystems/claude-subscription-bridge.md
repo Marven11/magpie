@@ -20,9 +20,17 @@ platform's SHA-256 and size, and a build that doesn't match both is not
 kept. It is only made when the user asks (`magpie claude-code install`, or
 yes to `magpie accounts add claude`'s offer on a machine without one), for
 a server or a container (Jorben on Discord). It is not on PATH and stands
-in for no agent. It doesn't update itself (the bridge sets
-`DISABLE_AUTOUPDATER`); installing again takes the newest and removes the
-older one.
+in for no agent. It doesn't update itself (every run magpie starts sets
+`DISABLE_AUTOUPDATER`), so the serving magpie keeps it current
+(`claudecode.KeepCurrent`, a `WhileServing` loop): a minute after it
+starts and every six hours it asks for the latest release and downloads a
+newer one, checked the same way. The version it replaced is removed on the
+next look, not at once, as a run being started may hold its path;
+`magpie claude-code install` removes it at once. It does nothing when
+magpie downloaded none, when the machine has its own `claude`, or when
+`DISABLE_AUTOUPDATER` is set for magpie (alextjy on Discord: a container's
+download stayed at its first version across image updates). A failed look
+keeps the download as it is and is logged.
 
 A run is started with `--dangerously-skip-permissions` (`claudeCLIArgs`):
 its only tools are magpie's MCP ones, answered by the client, and
@@ -1161,6 +1169,7 @@ go test -tags nogui ./internal/gateway/ -run '^TestClaudeLeanPrompt' -count=1
 go test -tags nogui ./internal/gateway/ -run '^TestClaudeTUIChosen$' -count=1
 go test ./internal/claudetui/ -count=1
 go test -tags nogui ./internal/claudecode/ -count=1
+go test -tags nogui ./internal/claudecode/ -run TestKeepCurrent -count=1
 go test -tags nogui ./internal/gateway/ -run '^TestClaudeCodeGivenTheBridgeForASOCKSProxy$' -count=1
 go test -tags nogui ./internal/provider/ -run '^TestClaudeSignInBridgesASOCKSProxy$' -count=1
 go test -tags nogui ./internal/netproxy/ -run '^TestEnvForBunWith' -count=1
