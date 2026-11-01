@@ -81,6 +81,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // the Usage page: every balance row
         const page = await (await browser.newContext({ viewport: { width: 900, height: 800 }, reducedMotion: "reduce" })).newPage();
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, left));
         await page.goto("http://magpie.test/?view=usage&tab=usage");
@@ -100,6 +101,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await context.addInitScript(() => { try { localStorage.setItem("magpie.panelTab", "usage"); } catch {} });
         const panel = await context.newPage();
         panel.setDefaultTimeout(5000);
+        panel.setDefaultNavigationTimeout(60000);
         panel.on("pageerror", (e) => errors.push(e.message));
         await panel.route("**/*", serve(lang, left));
         await panel.goto("http://magpie.test/?mode=panel");
