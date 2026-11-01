@@ -49,6 +49,7 @@ func TestHistoricalClaudeFilesDoNotDisplaceActiveWindows(t *testing.T) {
 				}
 			}
 			read()
+			saved() // the marker below is written on a parse a save may be encoding
 			before := map[string]os.FileInfo{}
 			for _, path := range []string{claude, codex} {
 				if cache[path].revisionWeight() == 0 {
