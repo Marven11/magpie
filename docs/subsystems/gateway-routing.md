@@ -912,6 +912,13 @@ did (01huadalang, 10-20, of Trae's search model). A client's own
 of whose models searches by itself, such as a plugin that marks none and
 whose `config` hook doesn't set `searches`, is not a searcher: its models
 are given magpie's `web_search`, and the row's `searchLeftOut` names it.
+The models looked at are `searcherModels`: what the provider lists
+(`Available()`) and the ones typed in by hand (`Exposed`). A custom
+Responses relay with no model list, marked as searching by itself, has
+only the hand-typed ones. Before, it was left out of the picker while
+the page listed it among the relays to pick by hand (axelburks on
+Discord). Covered by `TestSearcherRelayWithoutModelList` and
+`TestSearcherPickerOffersResponsesRelay`.
 Covered by `TestCommandCodeSearchesForOtherModels`,
 `TestPluginSearchModelIsASearcher` and `TestSearcherChosen`.
 

@@ -399,7 +399,12 @@ const (
 // its small model, as when none is named. Nil when none is named or
 // provider search is explicitly off.
 func chosenSearcher() (*provider.Provider, string, string) {
-	v := strings.TrimSpace(settings.Load().Searcher)
+	return namedSearcher(settings.Load().Searcher)
+}
+
+// namedSearcher is chosenSearcher of v, a searcher as Settings writes it.
+func namedSearcher(v string) (*provider.Provider, string, string) {
+	v = strings.TrimSpace(v)
 	if v == "" || v == "off" {
 		return nil, "", ""
 	}
@@ -419,7 +424,7 @@ func chosenSearcher() (*provider.Provider, string, string) {
 		// it searches with no model
 		return &p, "", ""
 	}
-	if model != "" && slices.ContainsFunc(p.Available(), func(m catalog.Model) bool { return m.ID == model }) && searchableModel(p, model) {
+	if model != "" && slices.ContainsFunc(searcherModels(p), func(m catalog.Model) bool { return m.ID == model }) && searchableModel(p, model) {
 		return &p, model, ""
 	}
 	if m := searcherModel(p); m != "" {
@@ -446,7 +451,7 @@ func Searchers() []SearcherChoice {
 			continue
 		}
 		var ms []catalog.Model
-		for _, m := range p.Available() {
+		for _, m := range searcherModels(p) {
 			if !provider.IsGroupRef(m.ID) && searchableModel(p, m.ID) {
 				ms = append(ms, m)
 			}
@@ -457,6 +462,25 @@ func Searchers() []SearcherChoice {
 		out = append(out, SearcherChoice{Provider: p, Small: searcherModel(p), Models: ms, rank: r, ManualOnly: manualOnly, Own: googleAccount(p)})
 	}
 	slices.SortStableFunc(out, func(a, b SearcherChoice) int { return cmp.Compare(a.rank, b.rank) })
+	return out
+}
+
+// searcherModels are the models a searcher may be named with: those its
+// list gives, then those typed in by hand that it doesn't list. A relay
+// with no model list (its models typed in by hand) has none listed, and
+// was left out of the picker while the row named it a relay to pick
+// (axelburks on Discord).
+func searcherModels(p provider.Provider) []catalog.Model {
+	avail := p.Available()
+	out := avail
+	for _, m := range p.ExposedOf(avail) {
+		if !slices.ContainsFunc(avail, func(a catalog.Model) bool { return a.ID == m.ID }) {
+			if len(out) == len(avail) {
+				out = slices.Clone(avail)
+			}
+			out = append(out, m)
+		}
+	}
 	return out
 }
 
