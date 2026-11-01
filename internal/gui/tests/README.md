@@ -372,6 +372,12 @@ why one didn't load, updates one and removes one. The add sheet's
 "look for a plugin" link lead there. English and Chinese, Chromium and WebKit,
 with the API faked.
 
+`plugin-npm-unknown.test.cjs` checks that a suggested plugin npm said
+nothing of (npm or the dist branch not read in time) offers Install, not
+Coming soon, and that the page asks again and then shows its version,
+while one npm said it doesn't have still reads Coming soon. Every
+language, Chromium and WebKit, wide and narrow, with the API faked.
+
 `plugins-more-discover.test.cjs` checks that the add sheet's "More in
 Plugins" row and its "look for a plugin" link open Plugins on Discover,
 after Built-in or Installed was the tab open last (outloudvi on Discord).
