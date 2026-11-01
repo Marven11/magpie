@@ -147,6 +147,33 @@ func TestRelayDrawsTheGPTImageFamilyByItsBareName(t *testing.T) {
 	}
 }
 
+// A keyed relay whose list draws no GPT Image is not taken to draw one by
+// its bare name: a chat-only relay ahead of the one that draws would take
+// every gpt-image-* and fail it at its vendor (#4432).
+func TestRelayDrawingNoGPTImageClaimsNoneOfTheFamily(t *testing.T) {
+	fresh(t)
+	plain := drawingRelay(t, "plain")
+	painter := drawingRelay(t, "painter", "gpt-image-2.5-flare")
+	s := New()
+	code, a, raw := postImages(t, s, "/v1/images/generations", "application/json", `{"model":"gpt-image-2","prompt":"a magpie"}`)
+	if code != 200 || a.Model != "painter/gpt-image-2" {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if got := plain.got("/v1/images/generations"); len(got) != 0 {
+		t.Fatalf("the chat-only relay was asked: %v", got)
+	}
+	if got := painter.got("/v1/images/generations"); len(got) != 1 {
+		t.Fatalf("painter asked %v", got)
+	}
+	if err := provider.Delete("painter"); err != nil {
+		t.Fatal(err)
+	}
+	code, _, raw = postImages(t, s, "/v1/images/generations", "application/json", `{"model":"gpt-image-2","prompt":"a magpie"}`)
+	if code != 404 || len(plain.got("/v1/images/generations")) != 0 {
+		t.Fatalf("chat-only relay alone: %d %s", code, raw)
+	}
+}
+
 // Codex's native image tool asks its turn's provider for the one it names
 // (gpt-image-2, #870): on a Codex backend whose list names another of the
 // family, it draws there as the one it asked for, not as magpie's pick

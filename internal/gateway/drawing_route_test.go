@@ -200,12 +200,8 @@ func TestCodexDrawingFallsBackToImageSetting(t *testing.T) {
 	s := New()
 	drawingMainTurn(t, s, "text-only/text", "session", "turn", "", "magpie-codex")
 	for _, test := range []struct{ model, session, turn, want string }{
-		// the turn's own provider is a Codex backend, which draws the same
-		// for any gpt-image-* name (#1865): codex's own model draws there,
-		// list or no list (#4432)
-		{"gpt-image-2", "", "turn", "text-only/gpt-image-2"},
-		{"gpt-image-future", "", "turn", "text-only/gpt-image-future"},
-		// no turn of its own to follow: the Settings' pick
+		{"gpt-image-2", "", "turn", st.ImageGen},
+		{"gpt-image-future", "", "turn", st.ImageGen},
 		{"gpt-image-2", "", "unknown-turn", st.ImageGen},
 		{"gpt-image-2", "", "", st.ImageGen},
 		{"gpt-image-2", "session", "unknown-turn", st.ImageGen},
@@ -221,7 +217,7 @@ func TestCodexDrawingFallsBackToImageSetting(t *testing.T) {
 	if err := settings.Save(st); err != nil {
 		t.Fatal(err)
 	}
-	code, _, raw := drawingToolCall(t, s, "/v1/images/generations", "gpt-image-2", "", "", "magpie-codex")
+	code, _, raw := drawingToolCall(t, s, "/v1/images/generations", "gpt-image-2", "", "turn", "magpie-codex")
 	if code != 400 || !strings.Contains(raw, "Settings") {
 		t.Fatalf("fallback off: %d %s", code, raw)
 	}
@@ -229,7 +225,7 @@ func TestCodexDrawingFallsBackToImageSetting(t *testing.T) {
 	if err := settings.Save(st); err != nil {
 		t.Fatal(err)
 	}
-	code, answer, raw := drawingToolCall(t, s, "/v1/images/generations", "gpt-image-2", "", "", "magpie-codex")
+	code, answer, raw := drawingToolCall(t, s, "/v1/images/generations", "gpt-image-2", "", "turn", "magpie-codex")
 	if code != 200 || answer.Model != AutoDrawer() {
 		t.Fatalf("automatic fallback: %d %s", code, raw)
 	}
