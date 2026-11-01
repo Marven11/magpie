@@ -424,7 +424,7 @@ function keysSumTip(subs) {
 function quotaWho(q) {
   const out = [];
   if (q.alias) {
-    const a = el("span", "user quota-alias", q.alias);
+    const a = el("span", "user quota-alias" + (q.named ? " own-name" : ""), q.alias);
     a.title = q.user ? q.alias + " · " + q.user : q.alias;
     out.push(a);
     if (q.user) {

@@ -221,6 +221,11 @@ type SubscriptionQuota struct {
 	// handed out, never cached.
 	Alias string `json:"alias,omitempty"`
 	Seat  string `json:"seat,omitempty"`
+	// Named is set when Alias is the user's own name (AccountNames), not
+	// the plugin's name for the account (PluginUserOf, a masked phone) or
+	// Seat: the GUI's Hide accounts keeps the user's own name in sight
+	// and hides the others as accounts (#3656).
+	Named bool `json:"named,omitempty"`
 	// GatewayKey is set on the card of a gateway key a remote magpie gave
 	// this computer (#1547, remote_key_limits.go): the limit that magpie
 	// holds the key to, beside the windows that show it.
