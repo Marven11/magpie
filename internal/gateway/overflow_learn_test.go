@@ -20,7 +20,7 @@ import (
 func TestOverflowRefusedOnceIsAskedLast(t *testing.T) {
 	fresh(t)
 	over := `{"error":{"message":"prompt is too long: 674232 tokens > 200000 token maximum","type":"invalid_request_error"}}`
-	a := &scripted{replies: []reply{{400, "", over}, {400, "", over}, {400, "", over}}}
+	a := &scripted{replies: []reply{{400, "", over}}}
 	b := &scripted{replies: []reply{{200, "", chatOK}, {200, "", chatOK}, {200, "", chatOK}}}
 	scriptedOn(t, "a", provider.Chat, a)
 	scriptedOn(t, "b", provider.Chat, b)
@@ -29,7 +29,9 @@ func TestOverflowRefusedOnceIsAskedLast(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New()
-	body := `{"model":"group/g","messages":[{"role":"user","content":"say something about this"}]}`
+	// the conversation as it grew: its first user message, which a ruled
+	// group keeps the conversation by (firstWords), and the turns since
+	body := `{"model":"group/g","messages":[{"role":"user","content":"say something about this"},{"role":"assistant","content":"what about it"},{"role":"user","content":"all of what follows, at length"}]}`
 
 	// the rule puts a first; it refuses the conversation as too long, and
 	// b answers
@@ -59,12 +61,24 @@ func TestOverflowRefusedOnceIsAskedLast(t *testing.T) {
 		t.Fatalf("another conversation: %d %s (a %d, b %d)", code, out, a.n, b.n)
 	}
 
-	// the first conversation compacted to less than what a refused: a is
-	// asked as the rule says again, the size may hold now
+	// the first conversation compacted to less than what a refused, its
+	// first user message kept, so it is the same conversation: a is asked
+	// as the rule says again, the size holds now, and a answers
 	a.n, b.n = 0, 0
-	code, out = postAs(t, s, "s1", `{"model":"group/g","messages":[{"role":"user","content":"up"}]}`)
-	if code != 200 || a.n != 1 || b.n != 1 {
+	a.replies = []reply{{200, "", chatOK}}
+	code, out = postAs(t, s, "s1", `{"model":"group/g","messages":[{"role":"user","content":"say something about this"}]}`)
+	if code != 200 || a.n != 1 || b.n != 0 {
 		t.Fatalf("compacted: %d %s (a %d, b %d)", code, out, a.n, b.n)
+	}
+
+	// what a answered, it holds: its refusal is forgotten, so the
+	// conversation grown back to the size a once refused begins with a
+	// again, as the rule says
+	a.n, b.n = 0, 0
+	a.replies = []reply{{400, "", over}}
+	code, out = postAs(t, s, "s1", body)
+	if code != 200 || a.n != 1 || b.n != 1 {
+		t.Fatalf("after a answered: %d %s (a %d, b %d)", code, out, a.n, b.n)
 	}
 }
 
