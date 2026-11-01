@@ -926,7 +926,7 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	// (claudeTUI): the shim (claudetui) is handed the -p arguments, and
 	// runs them interactively. A run it can't take is refused, never made
 	// -p: a refused request never ran, and isn't the last run
-	tui, code := claudeTUI(req, binary, prompt)
+	tui, code := claudeTUI(req, binary)
 	if tui && binary.wsl != nil {
 		// the helper would wait for a transcript it can't see
 		if dir := binary.tuiWSLUnread(configDir); dir != "" {
@@ -935,7 +935,7 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	}
 	if !tui && code != "off" && code != "no-shim" {
 		cleanup()
-		return nil, nil, claudeTUIErr(claudeNotTUIWhy(req, binary, prompt, configDir))
+		return nil, nil, claudeTUIErr(claudeNotTUIWhy(req, binary, configDir))
 	}
 	noteClaudeRun(code)
 	var cmd *exec.Cmd
@@ -1131,11 +1131,6 @@ func (e *tuiNoStart) Unwrap() error { return e.err }
 // request runs as -p.
 var claudeTUIRuns = true
 
-// tuiPromptMost is the longest first message a run in Claude Code's
-// interactive mode is pasted, its words without its images (each pasted
-// as its file's path); a longer one is refused (claudeTUIErr).
-const tuiPromptMost = 400 << 10
-
 // claudeTUI says whether a run is Claude Code's interactive mode, as a
 // person runs it (claudetui), rather than -p: the plan counts a -p
 // request, its entrypoint sdk-cli, at about twice the interactive mode's
@@ -1145,11 +1140,12 @@ const tuiPromptMost = 400 << 10
 // (its home known, so its transcripts are found); not for what only -p
 // takes: safeguards and a client's cache marks (control requests and an
 // extra body), a JSON schema, and images by URL. With it on, such a run is
-// refused (startRun), never made -p. prompt is the run's first message.
+// refused (startRun), never made -p. A first message of any length is
+// pasted (a 3MB paste was taken in 35s, a 500KB one answered whole).
 // The code is claudePrint's, for the provider editor's last run
 // (ClaudeMode.Last).
-func claudeTUI(req *Request, binary claudeCLI, prompt []map[string]any) (bool, string) {
-	code, why := claudePrint(req, binary, prompt)
+func claudeTUI(req *Request, binary claudeCLI) (bool, string) {
+	code, why := claudePrint(req, binary)
 	if why != "" && code != "no-shim" {
 		log.Printf("claude: not the interactive mode: %s", why)
 	}
@@ -1157,20 +1153,13 @@ func claudeTUI(req *Request, binary claudeCLI, prompt []map[string]any) (bool, s
 }
 
 // claudePrintWhy is why a run is -p, "" when it is the interactive mode.
-func claudePrintWhy(req *Request, binary claudeCLI, prompt []map[string]any) string {
-	_, why := claudePrint(req, binary, prompt)
+func claudePrintWhy(req *Request, binary claudeCLI) string {
+	_, why := claudePrint(req, binary)
 	return why
 }
 
 // claudePrint is claudePrintWhy with a code the GUI names it by.
-func claudePrint(req *Request, binary claudeCLI, prompt []map[string]any) (code, why string) {
-	var words []map[string]any
-	for _, bl := range prompt {
-		if bl["type"] != "image" {
-			words = append(words, bl)
-		}
-	}
-	b, _ := json.Marshal(words)
+func claudePrint(req *Request, binary claudeCLI) (code, why string) {
 	if code, why := claudeMachineWhy(binary); why != "" {
 		return code, why
 	}
@@ -1180,7 +1169,6 @@ func claudePrint(req *Request, binary claudeCLI, prompt []map[string]any) (code,
 	}{
 		{len(req.Format.schema()) > 0, "schema", "a JSON schema"},
 		{urlImages(req.Messages) > 0, "image", "an image known by its URL"},
-		{len(b) > tuiPromptMost, "big", "a first message over 400KB"},
 		// a branch goes on in its session's mode: -p's prompt isn't the
 		// interactive mode's, and the cache has the one its run asked
 		{req.branch != nil && !req.branch.tui, "branch", "a branch of a claude -p run's session"},
@@ -1355,8 +1343,8 @@ func claudeTUIOn() bool {
 }
 
 // claudeNotTUIWhy is why a run isn't the interactive mode.
-func claudeNotTUIWhy(req *Request, binary claudeCLI, prompt []map[string]any, configDir string) string {
-	if why := claudePrintWhy(req, binary, prompt); why != "" {
+func claudeNotTUIWhy(req *Request, binary claudeCLI, configDir string) string {
+	if why := claudePrintWhy(req, binary); why != "" {
 		return why
 	}
 	if binary.wsl != nil {

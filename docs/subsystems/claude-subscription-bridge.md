@@ -266,11 +266,18 @@ the setting (`claudeTUIErr`, `claudeNotTUIWhy`). That is when
 
 - it is Claude Code in WSL whose home the probe didn't find, or, in
   the distro user's own folder, one Windows can't read (`wslread`);
-- the request has a JSON schema, or words over 400KB (`tuiPromptMost`,
-  images not counted), which a paste can't carry;
+- the request has a JSON schema;
 - it is a branch of a `-p` run's session (`branch`: see
   [Tool results another request answers first](#tool-results-another-request-answers-first));
   a branch of an interactive run's session is interactive too.
+
+A first message of any length is pasted: a conversation told whole to
+a new Claude Code (one older than its session, or a client's own) can
+run to megabytes. A real 3MB paste showed `[Pasted text` after 35s, and
+a real 500KB one was answered with all of it in the transcript, so the
+helper waits for a paste a second per 64KB longer than `pasteWait`
+(`shownWait`) before its Enter. Until 11-01 words over 400KB were
+refused with a 502 (`big`), a bound no paste had been tried at.
 
 An image known only by its URL is downloaded first
 (`fetchURLImages`, in `serveClaudeSubscription`): the helper pastes

@@ -593,3 +593,15 @@ func TestShimInWSL(t *testing.T) {
 		t.Fatalf("env %q, want %q", bun, want)
 	}
 }
+
+// A long paste is waited for as long as Claude Code takes it in: a real
+// 3MB one showed "[Pasted text" after 35s, where pasteWait alone would
+// press Enter while the paste was still being taken in.
+func TestShownWaitGrowsWithThePaste(t *testing.T) {
+	if got := shownWait(100); got != pasteWait {
+		t.Fatalf("a short paste: %v", got)
+	}
+	if got := shownWait(3 << 20); got < 40*time.Second {
+		t.Fatalf("a 3MB paste waits %v", got)
+	}
+}

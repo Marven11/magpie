@@ -38,7 +38,7 @@ function ccTip(anchor, tui) {
       t("Your plan counts these requests as Claude Code's own use, at about half of the 5-hour allowance that -p uses for the same work.")),
     mode(!tui, "claude -p",
       t("Claude Code's print mode, the one scripts and the Agent SDK use: a request in, its reply out."),
-      t("It starts at once, and takes what the interactive mode can't: a JSON schema, a first message over 400KB."),
+      t("It starts at once, and takes what the interactive mode can't yet: a JSON schema."),
       t("The plan counts a -p request at about twice the interactive mode's.")),
     el("div", "foot", t("Switched here or in Settings › Models › Replies. With the interactive mode on, nothing ever runs as -p: a request it can't take, or one it fails to start for, fails saying why.")));
   document.body.append(tip);

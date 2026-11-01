@@ -696,6 +696,13 @@ func (s *shim) pasteImage(path string, after int) (int, error) {
 	}
 }
 
+// shownWait is how long a paste of n bytes may take to show: Claude Code
+// takes a long one in at about 100KB a second (a real 3MB paste showed
+// "[Pasted text" after 35s), so pasteWait and a second for every 64KB.
+func shownWait(n int) time.Duration {
+	return pasteWait + time.Duration(n/(64<<10))*time.Second
+}
+
 // shown waits for the prompt to show pasted text: its last words, or
 // Claude Code's "[Pasted text" for a long one. Text "" waits for nothing.
 func (s *shim) shown(text string) error {
@@ -709,7 +716,7 @@ func (s *shim) shown(text string) error {
 	if r := []rune(tail); len(r) > 16 {
 		tail = string(r[len(r)-16:])
 	}
-	shownBy := time.After(pasteWait)
+	shownBy := time.After(shownWait(len(text)))
 shown:
 	for {
 		p := s.plain()

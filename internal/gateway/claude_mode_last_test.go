@@ -37,10 +37,10 @@ func TestClaudeTUICodes(t *testing.T) {
 	claudeTUIRuns = true
 	t.Cleanup(func() { claudeTUIRuns = was })
 	req := &Request{Messages: []Message{{Role: "user", Parts: []Part{{Kind: Text, Text: "hi"}}}}, Format: &Format{Type: "json_schema", Schema: []byte(`{"type":"object"}`)}}
-	if tui, code := claudeTUI(req, claudeCLI{path: "/usr/local/bin/claude"}, []map[string]any{{"type": "text", "text": "hi"}}); tui || code != "schema" {
+	if tui, code := claudeTUI(req, claudeCLI{path: "/usr/local/bin/claude"}); tui || code != "schema" {
 		t.Fatalf("with a schema: %v %q", tui, code)
 	}
-	if tui, code := claudeTUI(req, claudeCLI{}, nil); tui || code != "missing" {
+	if tui, code := claudeTUI(req, claudeCLI{}); tui || code != "missing" {
 		t.Fatalf("no Claude Code: %v %q", tui, code)
 	}
 }
