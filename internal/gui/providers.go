@@ -1202,8 +1202,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			return
 		}
 		s := providersState()
-		writeProvidersJSON(rw, s)
-		keepProviders(s)
+		if sum, ok := writeProvidersJSON(rw, s); ok {
+			keepProvidersSummed(s, sum)
+		}
 	})
 	// Recent-call bodies are read only when their row is opened, not with
 	// every Providers or Gateway refresh (#1521): forty calls' bodies made
