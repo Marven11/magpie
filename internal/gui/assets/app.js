@@ -13236,7 +13236,7 @@ function renderAccounts(a, p) {
       }
     }
     if (quota && !l.lapsed) line.querySelector(".plan").after(accountRefresh(a.agent, p, l.user));
-    row.append(accountQuota(l.lapsed ? { [l.user]: { error: t(l.lapsed) } } : quota, l.user, capFor, p ? (m, w) => windowCapMeter(m, p, l.user, w) : null));
+    row.append(accountQuota(l.lapsed ? { [l.user]: { error: t(l.lapsed) } } : quota, l.user, capFor, p ? (m, w) => windowCapMeter(m, p, l.user, w) : null, a.agent));
     row.classList.add("with-aq"); // not :has(.aq), which Safari 15.0 lacks (#220)
     // Remove goes under ⋯ too, but beside Sign in again while signed out
     if (!row.classList.contains("signed-out")) tools.append(...line.querySelectorAll(":scope > .text.quiet"));
@@ -13698,7 +13698,7 @@ function accountRefresh(agent, p, user) {
 
 // accountQuota: an account's allowance as a line of small meters under its
 // name, the reset time on the ones nearly used up, credits and held resets.
-function accountQuota(data, user, capFor = () => 0, settable = null) {
+function accountQuota(data, user, capFor = () => 0, settable = null, prov) {
   const line = el("div", "aq");
   if (!data) {
     line.append(el("span", "skeleton sk-aq"), el("span", "skeleton sk-aq"));
@@ -13710,10 +13710,15 @@ function accountQuota(data, user, capFor = () => 0, settable = null) {
     line.append(el("span", "aq-asof", asOfText(q)));
   }
   if (q?.resets?.count && !q.error) {
-    const words = resetsWords(q.resets);
-    const resets = el("span", "aq-w aq-resets");
-    resets.title = tipLines(words.textContent, words.title);
+    // Codex's are used from here too, as on Usage (roamlog on X)
+    const words = resetsWords(q.resets), use = prov == "codex" && !q.resets.byWindow;
+    const resets = el("span", "aq-w aq-resets" + (use ? " aq-set" : ""));
+    resets.title = tipLines(words.textContent, words.title, use && "\n" + resetUseTitle(q));
     resets.append(words.querySelector(".resets-n"));
+    if (use) {
+      spanBtn(resets).setAttribute("aria-haspopup", "dialog");
+      resets.onclick = (e) => { e.stopPropagation(); askReset({ ...q, provider: prov, user }); };
+    }
     line.append(resets);
   }
   // an account on no plan says so, whatever else can be read of it
@@ -13973,21 +13978,12 @@ function pillNumber(at, val, ph, cls, label, parse, bad, own, set) {
 }
 
 // windowCapMeter: a window's meter on an account's row as the button that
-// sets the window's own cap, in the app's menu: the account's cap, none on
-// this window, a share, or one typed in place. A window of a model family
-// shown as one figure (tiers) stands for several windows and isn't set
-// here; one the cap doesn't count (on-demand) has none to set.
+// sets the window's own cap; not a family's (tiers) or on-demand's.
 function windowCapMeter(m, p, user, w) {
   if (!w.capId || w.tiers) return m;
   const own = windowOwnCapOf(p, user, w), cap = accountCapOf(p, user);
   const name = t(w.name);
-  // a span acting as the button: a <button> here, a flex item of the
-  // wrapping meter line, leaves WebKit's row its one-line height until the
-  // next layout, and the row grows under the pointer at the first click
-  const b = el("span", m.className + " aq-set" + (own ? " own" : ""));
-  b.setAttribute("role", "button");
-  b.tabIndex = 0;
-  b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); b.click(); } };
+  const b = spanBtn(el("span", m.className + " aq-set" + (own ? " own" : "")));
   b.append(...m.childNodes);
   if (own) b.append(el("span", "aq-own", own >= 100 ? t("No cap") : t("Cap {n}%", { n: own })));
   const reset = m.title || (w.resetsAt ? resetText(new Date(w.resetsAt), new Date(w.resetsAt).toLocaleString(intlLang())) : "");
@@ -14134,6 +14130,13 @@ function to100(v) { return Math.max(0, Math.min(100, v)); }
 // quotaNoShare: no share was said (0 is one, absent is not, #3650), or the
 // window is a wallet's balance (#3950): its text or figure is all there is
 function quotaNoShare(w) { return !!w.text || w.used == null || w.balance != null; }
+// spanBtn: a span as a button: a <button> in a wrapping line keeps WebKit's row one line high till the next layout
+function spanBtn(b) {
+  b.tabIndex = 0;
+  b.setAttribute("role", "button");
+  b.onkeydown = (e) => { if (e.key == "Enter" || e.key == " ") { e.preventDefault(); b.click(); } };
+  return b;
+}
 function tipLines(...a) { return a.filter(Boolean).join("\n"); }
 function quotaFill(w) {
   if (w.used == null) return 0;
@@ -17612,10 +17615,7 @@ function panelQuotaCard(q) {
 // panelOptsFolded: the panel cards, by id, whose options are folded.
 const panelOptsFolded = new Set(kept("panelOptsFolded", []));
 
-// resetsWords: a Codex account's rate-limit resets, "↺ 2 resets · until
-// Sat 22:30", the date only when one of them runs out. A GLM Coding team
-// plan's are counted by window, "↺ 2 five-hour resets · 1 weekly reset",
-// and spent on the vendor's page, not here.
+// resetsWords: "↺ 2 resets · until Sat 22:30"; a GLM team's by window.
 function resetsWords(r, q) {
   const w = el("span", "resets-words");
   if (r.byWindow) {
@@ -17652,9 +17652,7 @@ function resetsWords(r, q) {
   return w;
 }
 
-// resetsEach lists every reset left and when it runs out, a line each,
-// soonest first, as the vendor said them (#960: the hover only named the
-// first, which the card already shows).
+// resetsEach: every reset left and when it runs out, soonest first (#960)
 function resetsEach(r) {
   return r.each.map((c, i) => {
     const when = c.until ? new Date(c.until).toLocaleString(intlLang()) : "";
@@ -17664,8 +17662,7 @@ function resetsEach(r) {
   }).join("\n");
 }
 
-// resetUseTitle says which reset a use spends: the one that runs out
-// first, so no one hesitates for fear of losing one that lasts longer.
+// resetUseTitle: a use spends the one that runs out first
 function resetUseTitle(q) {
   const r = q.resets;
   return (r.until
