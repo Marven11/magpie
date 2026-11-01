@@ -56,10 +56,14 @@ type Provider struct {
 	// Gave are ids it had that another provider took after it (a rename
 	// onto one, a provider added under one), each with when: the calls
 	// recorded under such an id before then were this one's (Renames).
-	Gave   []Gave `json:"gave,omitempty"`
-	Icon   string `json:"icon,omitempty"`
-	Preset string `json:"preset,omitempty"` // preset this was created from, if any
-	Key    string `json:"key"`              // API key, as typed by the user
+	Gave []Gave `json:"gave,omitempty"`
+	Icon string `json:"icon,omitempty"`
+	// IconFrom is the picture's address a custom provider's Icon was
+	// fetched from in its editor, shown there again (hoobnn): only a
+	// record, never fetched again
+	IconFrom string `json:"iconFrom,omitempty"`
+	Preset   string `json:"preset,omitempty"` // preset this was created from, if any
+	Key      string `json:"key"`              // API key, as typed by the user
 
 	// AccessKeyID and SecretAccessKey are a Volcengine account's access
 	// key (TakesVolcAccessKey), what Ark tells its Coding or Agent Plan's
@@ -962,6 +966,10 @@ func Save(p Provider) error {
 	}
 	p = normalize(p)
 	p.IconURL = "" // import-only: never stored
+	// where a picture came from goes only with that picture
+	if p.IconFrom = strings.TrimSpace(p.IconFrom); !strings.HasPrefix(p.Icon, iconPrefix) {
+		p.IconFrom = ""
+	}
 	if p.ID == "" {
 		p.ID = Slug(p.Name)
 	}

@@ -85,6 +85,7 @@ type providerJSON struct {
 	ID        string            `json:"id"`
 	Name      string            `json:"name"`
 	Icon      string            `json:"icon"`
+	IconFrom  string            `json:"iconFrom,omitempty"` // the address Icon was fetched from (provider.IconFrom)
 	Preset    string            `json:"preset"`
 	Host      string            `json:"host"`
 	Chat      string            `json:"chat"`
@@ -673,7 +674,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 func providerInfoWith(p provider.Provider, ls provider.Listing, agents []agentUse, desktop map[string]string) providerJSON {
 	avail := ls.Available
 	out := providerJSON{
-		ID: p.ID, Name: p.Name, Icon: p.Icon, Preset: p.Preset, Host: p.Host(),
+		ID: p.ID, Name: p.Name, Icon: p.Icon, IconFrom: p.IconFrom, Preset: p.Preset, Host: p.Host(),
 		Chat: p.Chat, Responses: p.Responses, Anthropic: p.Anthropic, Gemini: p.Gemini, Decide: p.Decide, BaseAPI: p.BaseAPI, ModelTest: p.ModelTest(), TestsAs: p.TestClients(), DecideTest: p.AsksDecideModels(), MarksKinds: p.MarksKinds(),
 		Catalog: p.Catalog, Website: p.Website, KeysURL: p.KeysURL,
 		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, AccountCaps: p.AccountCaps, AccountWindowCaps: p.AccountWindowCaps, AccountNames: p.AccountNames, Headers: p.Headers, ExtraBody: p.ExtraBody, ReplyHeaders: p.ReplyHeaders, Searches: p.Searches, Cline: p.ClinePinnable(), PinUpstream: p.PinUpstream, Unredacted: p.Unredacted, CountFree: p.CountFree, InsecureTLS: p.InsecureTLS, TakesInsecureTLS: p.TakesInsecureTLS(), LimitRestOff: p.LimitRestOff, NativeCompaction: p.NativeCompaction, CarriesCompaction: p.CarriesCompaction(), PassUserAgent: p.PassUserAgent, OwnClient: p.OwnClient(), AuthHeader: p.AuthHeader, BothAuth: p.BothAuth(), BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, BalanceMethod: p.BalanceMethod, ModelsURL: p.ModelsURL,
@@ -1917,8 +1918,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				if in.BaseAPI == "" && old != nil {
 					in.BaseAPI = old.BaseAPI
 				}
+				// a save that doesn't say keeps the icon, and where it came from
 				if in.Icon == "" && old != nil && in.Preset == "" {
-					in.Icon = old.Icon
+					in.Icon, in.IconFrom = old.Icon, old.IconFrom
 				}
 				// native compaction only where the wire carries it: a
 				// signed-in account is told by the one saved

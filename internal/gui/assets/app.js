@@ -8281,6 +8281,7 @@ function iconPicker(ed) {
         for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
         const data = await api("icons", { data: btoa(bin) });
         draft.icon = data.icon;
+        draft.iconFrom = "";
         editorError("");
         draw();
         syncHead();
@@ -8297,15 +8298,18 @@ function iconPicker(ed) {
     site.setAttribute("aria-haspopup", "menu");
     site.setAttribute("aria-expanded", "false");
     site.append(svg(CHEV, 11, 1.7));
+    // true when the picture is the icon now (hoobnn)
     const get = async (path, body) => {
       site.disabled = true;
       site.textContent = t("Looking…");
-      let note = "", kind = "warn";
+      let note = "", kind = "warn", ok = false;
       try {
         const data = await api(path, { name: draft.name || "", ...body });
         draft.icon = data.icon;
+        draft.iconFrom = body.url && !data.failed ? body.url : "";
         if (data.failed) note = t("That picture couldn't be used, so the icon is the name's letters: {why}", { why: data.failed });
-        asking = !!data.failed;
+        asking = !!body.url;
+        ok = !data.failed;
       } catch (e) {
         note = e.message;
         kind = "err";
@@ -8313,6 +8317,13 @@ function iconPicker(ed) {
       draw();
       syncHead();
       editorError(note, kind);
+      return ok;
+    };
+    // an address typed is fetched by Enter, Use, leaving the box or Save,
+    // not Enter alone (hoobnn)
+    const fetchTyped = ed.iconFlush = () => {
+      const v = (typed = (box.querySelector(".icon-url")?.value ?? typed).trim());
+      return pending || (!asking || !v || v === draft.iconFrom ? null : (pending = get("icons/url", { url: v, base: base() }).finally(() => pending = null)));
     };
     site.onclick = (e) => {
       e.stopPropagation();
@@ -8330,7 +8341,7 @@ function iconPicker(ed) {
     box.append(file, choose, site, builtin);
     if (draft.icon && draft.icon !== "generic") {
       const reset = el("button", "text", t("Default"));
-      reset.onclick = () => { draft.icon = ""; draw(); syncHead(); };
+      reset.onclick = () => { draft.icon = ""; draft.iconFrom = ""; typed = ""; asking = false; draw(); syncHead(); };
       box.append(reset);
     }
     if (asking) {
@@ -8339,10 +8350,13 @@ function iconPicker(ed) {
       u.setAttribute("aria-label", t("Image URL"));
       u.onkeydown = (e) => {
         e.stopPropagation();
-        if (e.key === "Escape") { asking = false; draw(); box.querySelector("[aria-haspopup]").focus({ preventScroll: true }); }
-        else if (e.key === "Enter" && (typed = u.value.trim()) && !site.disabled) get("icons/url", { url: typed, base: base() });
+        if (e.key === "Escape") { typed = draft.iconFrom || ""; asking = false; draw(); box.querySelector("[aria-haspopup]").focus({ preventScroll: true }); }
+        else if (e.key === "Enter") fetchTyped();
       };
-      box.append(u);
+      u.oninput = () => typed = u.value;
+      const use = el("button", "text", t("Use"));
+      u.onchange = use.onclick = fetchTyped;
+      box.append(u, use);
     }
     if (open) {
       const grid = el("div", "icon-grid");
@@ -8360,14 +8374,14 @@ function iconPicker(ed) {
         const b = el("button", n === draft.icon ? "on" : "");
         b.title = n.replace(/-color$/, "");
         b.append(icon(n));
-        b.onclick = () => { draft.icon = n; open = false; draw(); syncHead(); };
+        b.onclick = () => { draft.icon = n; draft.iconFrom = ""; open = false; draw(); syncHead(); };
         grid.append(b);
       }
       box.append(find, grid);
       find.oninput();
     }
   };
-  let open = false, seek = "", asking = false, typed = "";
+  let open = false, seek = "", asking = !!draft.iconFrom, typed = draft.iconFrom || "", pending = null;
   // the dialog's title shows the icon too
   const syncHead = () => {
     const old = ed.querySelector(".ehead .ic");
@@ -8527,12 +8541,8 @@ document.addEventListener("pointerdown", (e) => {
   const find = at.dataset.pick ? `[data-pick="${CSS.escape(at.dataset.pick)}"]` : at.matches(".row.provider") ? `.row.provider[data-id="${CSS.escape(at.dataset.id)}"]` : null;
   pressed = { el: at, find, time: performance.now(), x: e.clientX };
 }, true);
-// Text cut short with an ellipsis says its whole self on hover (#721): an
-// agent's status line, a long model name. Which lines are cut depends on the
-// window's width, so it is measured when the pointer comes over one, and the
-// title follows: set while the text is cut, gone again once it fits. A title
-// the app wrote itself is never touched: data-full-tip keeps the text put here,
-// and a title that no longer reads the same was written by the app since.
+// Text cut short says its whole self on hover (#721), measured then; a
+// title the app wrote itself is never touched (data-full-tip).
 document.addEventListener("mouseover", (e) => {
   let el = e.target instanceof Element ? e.target : null;
   for (let i = 0; el && i < 4 && getComputedStyle(el).textOverflow !== "ellipsis"; i++) el = el.parentElement;
@@ -8556,12 +8566,8 @@ function originRect(o) {
   const r = at.matches(".row.provider") ? rowOwnRect(at, o.x) : at.getBoundingClientRect();
   return r.width && r.height && r.bottom > 0 && r.top < innerHeight ? r : null;
 }
-// rowOwnRect: a provider row as a tile in the add sheet is, its icon and
-// name. The whole row is wider than the dialog, so the dialog couldn't
-// shrink into it and opened as a full-size strip widening (the owner: "太
-// 生硬", the add sheet's tiles "特别完美"); out of this it zooms as they do.
-// Pressed past them, it grows from where it was pressed (the owner: 应该从
-// 点击处放大): that much of the row, around the press.
+// rowOwnRect: a provider row's icon and name, or that much of it round the
+// press, for the dialog to grow out of as the add sheet's tiles do (the owner).
 function rowOwnRect(row, x) {
   const r = row.getBoundingClientRect(), who = row.querySelector(".who");
   if (!who) return r;
@@ -8642,21 +8648,11 @@ $("#modal").addEventListener("keydown", (e) => {
   e.preventDefault();
   (e.shiftKey ? last : first).focus();
 });
-// A dialog opens centred and stays centred while it fills in, until the
-// reader's first press or key in it (the owner 10-24). From then it holds
-// the place of what the reader last pressed or focused, growing and
-// shrinking round it down to the window's foot, where its fields scroll.
-// With no room left, its fields shorten over a pressed button below them,
-// so an error line over Remove doesn't push Remove down. Centred all along,
-// the line just clicked slid from under the pointer. Its place is a
-// relative top and a cap on its height. A change made in the page is held
-// before it is drawn (a mutation's microtask); a resize a frame later.
+// A dialog stays centred while it fills in, until the reader's first press
+// or key (the owner 10-24); then it holds what was last pressed in place.
 const modalHold = { off: 0, at: null, y: 0, cap: null, capSet: "", touched: false };
-// how far down the dialog an element sits, its animation (a row coming
-// in) left out. One that scales (a Copy pop, a pressed segment) counts by
-// its own unscaled top: by its holder's, a pressed segment read 2px high
-// and the dialog crept down at each click (the owner, 10-23). One that
-// turns or skews counts by its holder.
+// how far down the dialog an element sits, its animation left out: one
+// that scales by its own top (the owner, 10-23), one that turns by its holder.
 function modalDepth(a, d) {
   if (!a?.isConnected || !d.contains(a) || a === d || !a.offsetParent) return null;
   if (getComputedStyle(d).transform === "none") {
@@ -9031,7 +9027,7 @@ function baseAPIOf(p) {
 
 // draftOf is a saved provider as its editor's form holds it.
 function draftOf(p) {
-  return { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, gemini: p.gemini || "", catalog: p.catalog, decide: p.decide || "", key: "", api: baseAPIOf(p), chosen: pickedOf(p), none: !!p.noModels, best: !!p.bestInFamily, extra: [], headers: headerRows(p.headers), extraBody: extraBodyText(p.extraBody), replyHeaders: (p.replyHeaders || []).join(", "), icon: p.icon || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, hiddenDrawers: [...(p.hiddenDrawers || [])], searches: !!p.searches, unredacted: !!p.unredacted, countFree: !!p.countFree, insecureTLS: !!p.insecureTLS, limitRestOff: !!p.limitRestOff, nativeCompaction: !!p.nativeCompaction, passUserAgent: !!p.passUserAgent, pinUpstream: !!p.pinUpstream, authHeader: p.authHeader || "", balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", balanceMethod: p.balanceMethod || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), outputs: contextsText(p.outputs), compacts: contextsText(p.compacts), keysUrl: p.keysUrl || "", ...proxyDraft(p), ...concurrencyDraft(p), rateWindows: (p.rateWindows || []).map((w) => ({ ...w })) };
+  return { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, gemini: p.gemini || "", catalog: p.catalog, decide: p.decide || "", key: "", api: baseAPIOf(p), chosen: pickedOf(p), none: !!p.noModels, best: !!p.bestInFamily, extra: [], headers: headerRows(p.headers), extraBody: extraBodyText(p.extraBody), replyHeaders: (p.replyHeaders || []).join(", "), icon: p.icon || "", iconFrom: p.iconFrom || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, hiddenDrawers: [...(p.hiddenDrawers || [])], searches: !!p.searches, unredacted: !!p.unredacted, countFree: !!p.countFree, insecureTLS: !!p.insecureTLS, limitRestOff: !!p.limitRestOff, nativeCompaction: !!p.nativeCompaction, passUserAgent: !!p.passUserAgent, pinUpstream: !!p.pinUpstream, authHeader: p.authHeader || "", balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", balanceMethod: p.balanceMethod || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), outputs: contextsText(p.outputs), compacts: contextsText(p.compacts), keysUrl: p.keysUrl || "", ...proxyDraft(p), ...concurrencyDraft(p), rateWindows: (p.rateWindows || []).map((w) => ({ ...w })) };
 }
 
 // duplicateProvider opens the Add form on a copy of p (#268): its URLs,
@@ -9966,6 +9962,9 @@ function drawEditor(p, presetID) {
   cancel.onclick = cancelEdit;
   const saveBtn = el("button", "text primary", t(isNew ? "Add" : "Save"));
   const save = () => {
+    // a typed icon address first; one that fails stays (hoobnn)
+    const waiting = custom && ed.iconFlush?.();
+    if (waiting) return waiting.then((ok) => ok && save());
     // new: an Add never replaces a provider that has the id already
     const body = { id: p ? slug(draft.id) || p.id : draft.id, from: p?.id, name: draft.name, preset: draft.preset, key: draft.key || "", chat: draft.chat, responses: draft.responses, anthropic: draft.anthropic, gemini: (draft.gemini || "").trim(), catalog: draft.catalog, models: p ? chosenIds() : draft.extra, headers: headersOf(draft.headers), new: isNew };
     if (isNew && draft.copyOf) body.copyOf = draft.copyOf;
@@ -9986,7 +9985,7 @@ function drawEditor(p, presetID) {
       }
       body.baseAPI = draft.api === "openai" ? "chat" : draft.api;
     }
-    if (custom) { body.icon = draft.icon || "generic"; body.balanceURL = (draft.balanceURL || "").trim(); body.balancePath = (draft.balancePath || "").trim(); body.balanceMethod = draft.balanceMethod || ""; body.modelsURL = (draft.modelsURL || "").trim(); }
+    if (custom) { body.icon = draft.icon || "generic"; body.iconFrom = draft.iconFrom || ""; body.balanceURL = (draft.balanceURL || "").trim(); body.balancePath = (draft.balancePath || "").trim(); body.balanceMethod = draft.balanceMethod || ""; body.modelsURL = (draft.modelsURL || "").trim(); }
     if (p) { body.fallback = draft.fallback; body.unlisted = draft.unlisted; body.hiddenDrawers = draft.hiddenDrawers; body.noModels = noneChosen(); body.bestInFamily = bestChosen(); body.modelPrefs = modelPrefsOfDraft(); Object.assign(body, routingOfDraft(p)); }
     body.searches = !!draft.searches && searchable();
     body.pinUpstream = !!draft.pinUpstream;
