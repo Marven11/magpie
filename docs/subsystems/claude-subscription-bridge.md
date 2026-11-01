@@ -258,13 +258,25 @@ the setting (`claudeTUIErr`, `claudeNotTUIWhy`). That is when
 
 - it is Claude Code in WSL whose home the probe didn't find, or, in
   the distro user's own folder, one Windows can't read (`wslread`);
-- the request has safeguards, client cache marks, a JSON schema, an image
+- the request has a JSON schema, an image
   known only by its URL (`urlImages`: the helper pastes files, and has no
   bytes of it), or words over 400KB (`tuiPromptMost`, images not counted),
   which a paste can't carry;
 - it is a branch of a `-p` run's session (`branch`: see
   [Tool results another request answers first](#tool-results-another-request-answers-first));
   a branch of an interactive run's session is interactive too.
+
+Safeguards are taken: interactive Claude Code reads
+`CLAUDE_CODE_EXTRA_BODY` only as it starts (2.1.316: a later
+`apply_flag_settings` or a rewritten `--settings` file changes nothing it
+sends), so `startRun` puts them in its environment, and a turn whose
+safeguards changed starts a new run told the whole conversation
+(`setSafeguards`). Client cache marks are taken too, but not kept: the
+helper pastes the words without their marks, so the run keeps Claude
+Code's own prompt caching (no `DISABLE_PROMPT_CACHING`, no client tail)
+and the reply reports every client mark as dropped
+(`clientCache.pasted`; see
+[Client-placed cache marks](#client-placed-cache-marks-1717)).
 
 The gateway's log says which (`claude: not the interactive mode: …`).
 A refused request never ran, so it isn't the editor's last request
@@ -346,8 +358,11 @@ ignore the header. The mode is
 part of the run's identity, including rewritten conversations and tool-result
 handoffs: opted-in and ordinary requests never share a run.
 
-An opted-in run sets `DISABLE_PROMPT_CACHING=1`. Its four cache slots belong
-to the client. `claude_cache.go` validates the marks before run selection;
+An opted-in `-p` run sets `DISABLE_PROMPT_CACHING=1`. Its four cache slots
+belong to the client. An interactive run is pasted the words without their
+marks, so it keeps Claude Code's own caching and reports the system, message
+and tail marks dropped beside the tools' (`clientCache.pasted`); the table
+below is the `-p` run's. `claude_cache.go` validates the marks before run selection;
 `renderClaudePrompt` places them in a new run's first user message.
 
 | Client mark | Bridge behavior |

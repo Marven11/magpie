@@ -639,7 +639,8 @@ func (c claudeCLI) asRoot(env []string) []string {
 // claudeEnvVars are the variables magpie sets for a Claude Code run, which
 // one in WSL is handed (wslrun's Env).
 var claudeEnvVars = []string{"ENABLE_CLAUDEAI_MCP_SERVERS", "DISABLE_AUTO_COMPACT", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
-	"DISABLE_TELEMETRY", "DISABLE_ERROR_REPORTING", "DISABLE_AUTOUPDATER", "ANTHROPIC_BETAS"}
+	"DISABLE_TELEMETRY", "DISABLE_ERROR_REPORTING", "DISABLE_AUTOUPDATER", "ANTHROPIC_BETAS",
+	"CLAUDE_CODE_EXTRA_BODY", "DISABLE_PROMPT_CACHING"}
 
 // env is env for a run in config directory configDir ("" for the account
 // Claude Code is signed in to): for one in WSL, what of it goes in.
@@ -952,11 +953,25 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		cleanup()
 		return nil, nil, err
 	}
-	if req.clientCache != nil {
+	if req.clientCache != nil && !tui {
+		// the client's marks take the place of Claude Code's own; the
+		// interactive mode is pasted the words without them, and keeps
+		// its own (clientCache.pasted)
 		env = append(env, "DISABLE_PROMPT_CACHING=1")
 	}
 	if len(req.Safeguards) > 0 {
 		env = append(env, "ANTHROPIC_BETAS="+req.SafeguardBeta)
+	}
+	// The interactive mode's Claude Code reads CLAUDE_CODE_EXTRA_BODY once,
+	// as it starts: one handed over later (apply_flag_settings, or a
+	// --settings file rewritten) changes nothing it sends, so the run is
+	// given the safeguards here, and one whose turn changes them is
+	// started again (setSafeguards). A client's cache tail isn't added to
+	// Claude Code's own marks, which it keeps (clientCache.pasted).
+	tuiBody := ""
+	if tui && len(req.Safeguards) > 0 {
+		tuiBody = claudeExtraBody(req.Safeguards, "")
+		env = append(env, "CLAUDE_CODE_EXTRA_BODY="+tuiBody)
 	}
 	if tui && (!client || configDir != "") {
 		// a folder of magpie's, or an account folder of magpie's whose
@@ -999,6 +1014,9 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	run.lean = req.leanPrompt
 	run.tui = tui
 	run.cachePrefix = prefix
+	if tuiBody != "" {
+		run.safeguards = bytes.Clone(req.Safeguards)
+	}
 	run.allowed = allowedTools(req)
 	if user, _ := ownerAccount(owner); user != "" {
 		run.loginVersion = provider.ClaudeLoginVersion(user)
@@ -1160,8 +1178,6 @@ func claudePrint(req *Request, binary claudeCLI, prompt []map[string]any) (code,
 		is        bool
 		code, why string
 	}{
-		{len(req.Safeguards) > 0, "safeguards", "safeguards"},
-		{req.clientCache != nil, "cache", "the client's cache marks"},
 		{len(req.Format.schema()) > 0, "schema", "a JSON schema"},
 		{urlImages(req.Messages) > 0, "image", "an image known by its URL"},
 		{len(b) > tuiPromptMost, "big", "a first message over 400KB"},
@@ -1201,8 +1217,7 @@ func claudeMachineWhy(binary claudeCLI) (code, why string) {
 // machine, for the Claude Code provider page: TUI when Claude Code's
 // interactive mode, else -p (turned off) or none (it can't run here), Why
 // the code of claudeMachineWhy. With it on, a request only -p takes
-// (safeguards, a client's cache marks, a JSON schema, an image known by
-// its URL, a first message over 400KB) is refused.
+// (claudePrint) is refused.
 type ClaudeMode struct {
 	TUI bool   `json:"tui"`
 	Why string `json:"why,omitempty"`
@@ -1277,6 +1292,9 @@ func (r *subscriptionRun) setSafeguards(req *Request) error {
 	r.settingsMu.Lock()
 	defer r.settingsMu.Unlock()
 	tail := req.cacheTail()
+	if r.tui {
+		tail = "" // its own marks, not the client's (startRun)
+	}
 	if r.clientMarks != (req.clientCache != nil) || !r.cachePrefix.accepts(tail) {
 		return errors.New("client cache marks changed; restart Claude Code")
 	}
@@ -1285,6 +1303,10 @@ func (r *subscriptionRun) setSafeguards(req *Request) error {
 	}
 	if len(req.Safeguards) > 0 && r.safeguardBeta != req.SafeguardBeta {
 		return errors.New("safety beta changed; restart Claude Code")
+	}
+	if r.tui {
+		// it read them as it started (startRun), and reads them no more
+		return errors.New("safeguards changed; restart Claude Code's interactive mode")
 	}
 	err := r.cliControl(map[string]any{"subtype": "apply_flag_settings", "settings": map[string]any{
 		"env": map[string]string{"CLAUDE_CODE_EXTRA_BODY": claudeExtraBody(req.Safeguards, tail)}}})
