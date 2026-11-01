@@ -238,6 +238,13 @@ each place is drawn again once it is in. All three come from
 - an account whose reading failed is unknown, not 0, and is counted
   ("1 couldn't be read"); a window an `asOf` reading stands in for,
   whose reset has passed, is left out and counted in its tooltip;
+- a window the account can't spend counts as used up: its `heldBy`
+  (`provider.WithHeldWindows`, set on `/api/usage/quotas`) names another
+  window that stops the account for every model, is used up and starts
+  again after it, as 7 days at 0% left holds 5 hours at 100% (#4791).
+  Not the other way: a week with room behind five hours used up keeps
+  it. The tooltip counts how many were held; each account's own card
+  still shows the vendor's figure;
 - only what two or more accounts have goes together; family and pool
   stay, so `familyWindows` folds the result as an account's.
 
