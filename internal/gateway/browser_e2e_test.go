@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"html"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -402,4 +403,33 @@ func TestBrowserSessionsApartInARealBrowser(t *testing.T) {
 	if groupOf(list, "*", "Two") != gb || groupOf(list, "~", "Fixture") != ga {
 		t.Fatalf("b's list doesn't have its tab in %s and a's in %s:\n%s", gb, ga, list)
 	}
+}
+
+// The one browser tool in a real Chromium: actions open, act and go back,
+// and screenshot: true brings a picture of the window no wider than
+// browserShotWidth.
+func TestBrowserToolActionsInARealBrowser(t *testing.T) {
+	srv, site := realBrowser(t)
+	call, ok := browserCaller(t, srv, "e2e-one")
+	ok("browser", map[string]any{"action": "tab_new", "url": site.URL + "/frames?src=about:blank"}, "Opened t", "Frames fixture")
+	m := call("browser", map[string]any{"action": "snapshot", "interactive": true, "screenshot": true})
+	if m.Result.IsError || len(m.Result.Content) != 2 || m.Result.Content[1].Type != "image" {
+		t.Fatalf("snapshot with screenshot: %+v", m.Result.Content)
+	}
+	b, _ := base64.StdEncoding.DecodeString(m.Result.Content[1].Data)
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(b))
+	if err != nil || cfg.Width == 0 || cfg.Width > browserShotWidth {
+		t.Fatalf("the picture: %+v %v", cfg, err)
+	}
+	page := m.Result.Content[0].Text
+	r := regexp.MustCompile(`button "Works a while" \[ref=(e\d+)\]`).FindStringSubmatch(page)
+	if r == nil {
+		t.Fatalf("no button in:\n%s", page)
+	}
+	ok("browser", map[string]any{"action": "click", "ref": r[1]}, "done")
+	ok("browser", map[string]any{"action": "navigate", "url": site.URL + "/two"})
+	if out := ok("browser", map[string]any{"action": "back"}, "Frames fixture"); strings.Contains(out, "browser_") {
+		t.Fatalf("an answer names the eighteen:\n%s", out)
+	}
+	ok("browser", map[string]any{"action": "tab_close"}, "Closed t")
 }
