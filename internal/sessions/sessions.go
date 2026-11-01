@@ -1572,6 +1572,7 @@ func Reset() {
 	cache, loaded = nil, false
 	cacheGeneration++
 	forgetKeptStats()
+	forgetKeptList()
 }
 
 // List reads the latest sessions of every agent, the most recently active
@@ -1600,6 +1601,15 @@ func listSessions(limit int) []Session {
 
 	defer useDBs()()
 	files := allFiles()
+	// every changed file, not just the latest sessions': the first read
+	// indexes them all in one run the page can show, and the stats read
+	// after it has nothing left to do
+	refresh(files, files)
+	price, titles := pricer(), codexTitleOf()
+	if out, ok := keptListing(files, limit, price, titles); ok {
+		return out
+	}
+	price, titles = keepListing(files, limit, price, titles)
 	groups := byKey(files, nil)
 	latest := make(map[string]time.Time, len(groups))
 	for _, f := range files {
@@ -1620,17 +1630,12 @@ func listSessions(limit int) []Session {
 	// the keys are not truncated yet: assemble below drops an empty
 	// session, and a nonempty one must take its place rather than the
 	// page going short - an empty file is not a session (#1320)
-	// every changed file, not just the latest sessions': the first read
-	// indexes them all in one run the page can show, and the stats read
-	// after it has nothing left to do
-	refresh(files, files)
 	identities := codexIdentitySnapshot(files)
 	taskTitles := codexSubagentTaskTitles(files)
 
 	copies, branches := ccFamily(files)
 	copyIDs := copiesByKeeper(copies, groups)
 
-	price, titles := pricer(), codexTitleOf()
 	// made for the page at once, not grown an append at a time (#2278)
 	out := make([]Session, 0, min(limit, len(keys)))
 	for _, k := range keys {
@@ -1649,6 +1654,7 @@ func listSessions(limit int) []Session {
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Last.After(out[j].Last) })
+	keepList(out)
 	return out
 }
 
