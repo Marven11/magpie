@@ -4819,13 +4819,18 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		}
 		provider.SawClient(provider.ClientCodex, seen)
 	}
-	// a billion-context proxy put in front of the provider (#3052) knows a
-	// cooperative plugin's session by its x-bili- headers, which go on as
-	// the agent sent them: the plugin's name, the conversation and the
-	// context window it serves. None of them is a key.
-	for k, vs := range in {
-		if biliHeader(k) {
-			req.Header[k] = slices.Clone(vs)
+	if p.Account == nil && biliProxied(req.URL.Path) {
+		// a billion-context proxy put in front of the provider (#3052)
+		// knows a cooperative plugin's session by its x-bili- headers,
+		// which go on as the agent sent them: the plugin's name, the
+		// conversation and the context window it serves. None of them is
+		// a key. Only to a URL in bili's /bili/<upstream> form, the one
+		// its README gives for a gateway: a vendor or a signed-in
+		// account is never sent them.
+		for k, vs := range in {
+			if biliHeader(k) {
+				req.Header[k] = slices.Clone(vs)
+			}
 		}
 	}
 	if provider.OpenCodeURL(req.URL.String()) {
@@ -4989,6 +4994,12 @@ func codexClientHeader(k string) bool {
 // conversation and its context window, all x-bili- prefixed and none a key.
 func biliHeader(k string) bool {
 	return strings.HasPrefix(strings.ToLower(k), "x-bili-")
+}
+
+// biliProxied is whether a request's path goes through a billion-context
+// proxy in its prefix form, http://host:8787/bili/<the upstream's URL>.
+func biliProxied(path string) bool {
+	return strings.HasPrefix(path, "/bili/")
 }
 
 // passthrough relays a request the provider understands as-is, with the
