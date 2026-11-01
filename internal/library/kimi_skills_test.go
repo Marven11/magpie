@@ -82,3 +82,59 @@ func TestKimiOldSharedEntrySwept(t *testing.T) {
 		t.Error("goose's skill went from ~/.agents/skills")
 	}
 }
+
+// The sweep of ~/.agents/skills takes magpie's own entries alone: the
+// user's own folders and links there, one by the name of a library skill
+// Kimi Code is given among them, stay as they were, files and targets
+// (#4379). A skill given to Kimi Code and Codex, both of which read the
+// shared folder besides their own, goes into each one's own folder and
+// not into the shared one.
+func TestKimiSweepLeavesTheUsersOwnSharedSkills(t *testing.T) {
+	h := sandbox(t)
+	write(t, filepath.Join(h, ".kimi-code/config.toml"), "")
+	shared := filepath.Join(h, ".agents/skills")
+	skill(t, filepath.Join(shared, "mine"), "mine", "The user's own")
+	skill(t, filepath.Join(shared, "pdf"), "pdf", "The user's own pdf")
+	skill(t, filepath.Join(h, "elsewhere/ext"), "ext", "Linked by the user")
+	if err := os.Symlink(filepath.Join(h, "elsewhere/ext"), filepath.Join(shared, "ext")); err != nil {
+		t.Fatal(err)
+	}
+	before := map[string]string{}
+	for _, n := range []string{"mine", "pdf", "ext"} {
+		b, err := os.ReadFile(filepath.Join(shared, n, "SKILL.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		before[n] = string(b)
+	}
+
+	src := filepath.Join(h, "src/skills")
+	skill(t, filepath.Join(src, "pdf"), "pdf", "Read PDFs")
+	skill(t, filepath.Join(src, "orca"), "orca", "Orca")
+	ok(t)(InstallSkills(src, []string{"pdf"}, []string{"kimi"}))
+	ok(t)(InstallSkills(src, []string{"orca"}, []string{"kimi", "codex"}))
+	ok(t)(Sync())
+	ok(t)(Sync())
+
+	for n, want := range before {
+		p := filepath.Join(shared, n)
+		if ours(p, n) {
+			t.Errorf("%s in ~/.agents/skills became magpie's", n)
+		}
+		b, err := os.ReadFile(filepath.Join(p, "SKILL.md"))
+		if err != nil || string(b) != want {
+			t.Errorf("the user's own %s changed: %q %v", n, b, err)
+		}
+	}
+	if to, err := os.Readlink(filepath.Join(shared, "ext")); err != nil || to != filepath.Join(h, "elsewhere/ext") {
+		t.Errorf("the user's link moved: %q %v", to, err)
+	}
+	if _, err := os.Lstat(filepath.Join(shared, "orca")); !os.IsNotExist(err) {
+		t.Error("Kimi Code and Codex's skill sits in ~/.agents/skills")
+	}
+	for _, d := range []string{".kimi-code/skills/orca", ".codex/skills/orca"} {
+		if !ours(filepath.Join(h, d), "orca") {
+			t.Errorf("%s isn't magpie's link", d)
+		}
+	}
+}
