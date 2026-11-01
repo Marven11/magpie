@@ -1038,6 +1038,43 @@ Discord: Claude Desktop on Fable 5.1 got
   reply that called the client's tools too (the text is left out), is
   not asked.
 
+## A refusal Claude Code goes on from (Chixi_Fang on X)
+
+Claude Code 2.1.316 doesn't end a turn at a refusal. At the first
+`stop_reason: refusal` it writes a `system/informational` line and a
+synthetic user message and asks the same model again; at the second it
+writes `system/model_refusal_fallback` and asks its fallback model
+(claude-opus-4-8 for an Opus 5.5 run), whose answer ends the turn with
+`result` `success`. Only when the fallback refuses too does it write
+`system/model_refusal_no_fallback` and a `<synthetic>` "API Error: …"
+message, and end with `stop_reason: refusal` (`-p`) or
+`error_during_execution` with `api_error_status` 0 (the TUI). The TUI's
+lines are whole messages; the retracted try is left out of them.
+
+So `readOutput` doesn't end the reply at a refusal from Claude Code's own
+model (`refused`, not `theirs`, not a schema reply): the next message goes
+on with the same reply, as a continuation does, and its words follow the
+ones streamed before. A refusal's `stop_details` (its category) is held
+(`heldIfRefused`) and told only if it stands: at a `result` with no API
+status, or at the end of the output (`refusal`). The client then gets a
+refusal with its stop_details, as before, so the gateway's `hw.refused`
+still decides about the next account (b01766d13). A `result` with a
+status after a refusal is that error (a retry that failed), not a
+refusal. A fallback that answers is a 200 with no refusal anywhere, so
+nothing moves to another account.
+
+The model that went on is told on the continuing `KUsage` as `Model` and
+`Served`: a stream has named its model at `message_start` and can't
+change it, but the try records the fallback model (`Served`, `Swapped`),
+and a reply told whole takes it as its model (`collector`). Words a
+retracted try streamed before its refusal stay in a stream; Claude Code
+shows the user the same. A reply that called the client's tools before
+the refusal ends there, as before.
+
+Claude Code's other fallback, on overload (529), needs
+`--fallback-model`, which the bridge doesn't pass, as Claude Code itself
+doesn't by default; that path is unchanged.
+
 ## The account's allowance on the reply (#1257)
 
 Claude Code tells a run's account allowance in its stream-json

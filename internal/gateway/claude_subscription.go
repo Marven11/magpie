@@ -2740,6 +2740,16 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	// own call, and the text the model writes is left out.
 	theirs := false // this message calls a client's tool
 	inside := false // a message goes on after Claude Code's own call
+	// A message Anthropic's safeguards stopped (stop_reason refusal) Claude
+	// Code asks again once, then on its fallback model (its
+	// model_refusal_fallback), and the reply goes on in the message that
+	// answers, as after its own call. Ended there, the client was told a
+	// refusal, and the gateway took it to another account or handed it
+	// back, while Claude Code went on to answer (Chixi_Fang on X). Only a
+	// refusal still standing at the turn's result ends the reply as one.
+	refused := false          // a refusal Claude Code may go on from
+	var refusedDetails []byte // its stop_details, told only if it stands
+	replyModel := ""          // the model the reply began with
 	// what the messages before cost, as each message's usage counts only
 	// itself and the client keeps the last it is told
 	var before, this Usage
@@ -2793,6 +2803,9 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	end := func(why string) {
 		if goesOn := why != "" && r.schema && !theirs || why == "tool_use" && len(own) > 0 && !theirs; goesOn {
 			inside = true // the answer is the next message's, or the result's
+		} else if why == "refusal" && !theirs {
+			// the attempt Claude Code retracts: its held words go with it
+			inside, refused, calls = true, true, textCalls{}
 		} else if why != "" {
 			held, seen := calls.end()
 			switch {
@@ -2856,11 +2869,19 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	begin := func(id, model string, u cliUsage) {
 		own, theirs, stopped, shown = map[int]bool{}, false, false, false
 		if inside || cut {
-			inside, cut = false, false
+			inside, cut, refused, refusedDetails = false, false, false, nil
 			before, this = before.plus(this, false), Usage{}
-			r.emit(Event{Kind: KUsage, Usage: usage(u)})
+			// Claude Code's fallback model answering: a reply told
+			// whole names it; a stream named its model as it began
+			v := usage(u)
+			if model == replyModel {
+				model = ""
+			}
+			v.Served = model
+			r.emit(Event{Kind: KUsage, Usage: v, Model: model})
 			return
 		}
+		replyModel = model
 		before, this = lateUsage.gateway(), Usage{}
 		lateUsage = cliUsage{}
 		calls, retold = textCalls{}, false
@@ -2920,6 +2941,27 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			})
 		}
 		r.mu.Unlock()
+	}
+	// refusal ends the reply as refused, once Claude Code went on from
+	// its refusal no more
+	refusal := func() {
+		refused, cut = false, false
+		r.emit(Event{Kind: KUsage, StopDetails: refusedDetails})
+		refusedDetails = nil
+		r.emit(Event{Kind: KStop, Stop: stopFromAnthropic("refusal")})
+		r.endSegment()
+	}
+	// heldIfRefused is a message's stop_details as told the client: a
+	// refusal's are held until it stands, the reply not ending on it
+	heldIfRefused := func(why string, raw json.RawMessage) json.RawMessage {
+		d := stopDetails(raw)
+		if why != "refusal" || theirs || r.schema {
+			return d
+		}
+		if d != nil {
+			refusedDetails = d
+		}
+		return nil
 	}
 	// failed ends the reply with an error where it was cut short with
 	// nothing to go on in
@@ -3075,8 +3117,15 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			// this and no message_stop, the CLI waiting on its next input:
 			// the reply ends here, or it would wait with it (#177)
 			waiting := r.schema && inside
-			inside = false
+			standing := refused
+			inside, refused = false, false
 			switch {
+			case standing && envelope.APIErrorStatus == 0:
+				// nothing came after the refusal: with no model left to
+				// fall back on, Claude Code ends the turn on it, failed
+				// (its model_refusal_no_fallback, told in an error of its
+				// own); a retry that failed has its status
+				refusal()
 			case envelope.IsError:
 				cut = false
 				text := envelope.Result
@@ -3187,7 +3236,7 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 					}
 				}
 			}
-			r.emit(Event{Kind: KUsage, Usage: usage(whole.Usage), RequestID: reqID, SafeguardResults: whole.SafeguardResults, StopDetails: stopDetails(whole.StopDetails)})
+			r.emit(Event{Kind: KUsage, Usage: usage(whole.Usage), RequestID: reqID, SafeguardResults: whole.SafeguardResults, StopDetails: heldIfRefused(whole.StopReason, whole.StopDetails)})
 			if quiet != nil {
 				quiet.Stop()
 			}
@@ -3260,7 +3309,7 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 				}
 			}
 		case "message_delta":
-			r.emit(Event{Kind: KUsage, Usage: usage(e.Usage), RequestID: reqID, SafeguardResults: e.Delta.SafeguardResults, StopDetails: stopDetails(e.Delta.StopDetails)})
+			r.emit(Event{Kind: KUsage, Usage: usage(e.Usage), RequestID: reqID, SafeguardResults: e.Delta.SafeguardResults, StopDetails: heldIfRefused(e.Delta.StopReason, e.Delta.StopDetails)})
 			if e.Delta.StopReason != "" {
 				stopped = true
 			}
@@ -3293,6 +3342,8 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 		r.emit(Event{Kind: KError, Text: err.Error()})
 	} else if cut {
 		failed("and Claude Code stopped")
+	} else if refused {
+		refusal()
 	}
 }
 
