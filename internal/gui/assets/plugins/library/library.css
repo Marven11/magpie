@@ -67,6 +67,10 @@ body.window .lib-head { top: -2px; margin: -2px 0 0; padding: 8px 0 4px; --bleed
 .lib-hubat .who { min-width: 0; }
 .lib-hubat .lib-hubURL { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
 .lib-hubat .lib-hubconnect { flex: none; }
+.lib-list .row.lib-hubnoterow { flex-wrap: nowrap; align-items: center; }
+.lib-hubnoterow > .lib-glyph { align-self: center; margin-top: 0; }
+.lib-hubnoterow .who { min-width: 0; }
+.lib-hubnoterow .lib-hubname { flex: 0 1 200px; min-width: 96px; margin: 0; }
 /* Connect an app: Agents | Other apps, as System Settings draws a pane:
    one line of where things stand, then inset groups with hairlines */
 /* one column: the dialog's body (.ebody) is the editor's label/field grid */

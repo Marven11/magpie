@@ -1461,6 +1461,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.CORSOrigins = cur.CORSOrigins                   // set on its own (cors below)
 		in.AllowIPs = cur.AllowIPs                         // set on its own (allowips below)
 		in.FetchPrivate = cur.FetchPrivate                 // in settings.json only
+		in.RouterNote = cur.RouterNote                     // set on its own (the Library's servers/hub-note)
 		in.GitHubToken = cur.GitHubToken                   // set on its own (github-token below), never sent to the page
 		in.ProxyCustom = cur.ProxyCustom                   // set by settings.Save from the proxy, never by the page
 		in.RequestArchive = cur.RequestArchive             // the Gateway page's, set on its own

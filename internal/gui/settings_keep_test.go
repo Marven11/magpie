@@ -201,6 +201,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 	was.ProxyCustom = "http://me:secret@proxy.example:8080"
 	was.PanelShortcut = "Ctrl+Alt+K"
 	was.SearcherThen = []string{"fake/m1", "fake/m2"} // set in its own row
+	was.RouterNote = "Los Angeles"                    // the Library's servers/hub-note
 	if err := settings.Save(was); err != nil {
 		t.Fatal(err)
 	}

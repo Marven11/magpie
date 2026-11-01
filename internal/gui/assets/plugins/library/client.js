@@ -1697,6 +1697,7 @@ magpie.plugin("library", (ctx) => {
     connect.classList.add("lib-hubconnect");
     at.append(glyph(GLYPH.web), aw, copyBtn(hubURL(), t("Address")), connect);
     list.append(at);
+    list.append(hubNoteRow());
     const names = (why) => hubAgents().filter((a) => a.hub === why).map((a) => a.name).join(", ");
     const why = [
       ["no-remote", "{agents} reaches no MCP server over HTTP, so it keeps each server's own entry."],
@@ -1712,6 +1713,51 @@ magpie.plugin("library", (ctx) => {
       }
     }
     return out;
+  }
+  // What the router says of itself to the agents (packinggoodsllc_07668 on
+  // Discord: one magpie in China and one in Los Angeles serve the same
+  // tools, and an agent fetching Google should pick Los Angeles): before
+  // each tool's description and in what it tells an agent connecting.
+  // Empty, an agent on another computer is told this computer's name,
+  // shown as the placeholder. Saved on Enter or leaving the field, this
+  // computer's own (settings' routerNote).
+  function hubNoteRow() {
+    const row = el("div", "row lib-row lib-hubnoterow");
+    const who = el("div", "who");
+    who.append(el("div", "name", t("Router name")));
+    who.append(el("div", "sub wraps", t("Agents connected to more than one router tell them apart by it. Empty, agents on other computers are told this computer's name.")));
+    const f = el("input", "lib-filter lib-hubname");
+    f.type = "text";
+    f.value = lib.hubNote || "";
+    f.placeholder = lib.hubName || "";
+    f.maxLength = 80;
+    f.spellcheck = false;
+    f.autocomplete = "off";
+    f.setAttribute("aria-label", t("Router name"));
+    let saved = lib.hubNote || "";
+    const save = () => {
+      const note = f.value.trim().replace(/\s+/g, " ");
+      if (note === saved) return;
+      const was = saved;
+      saved = note;
+      // a change of settings, not of the agents' files: no result to report
+      change("servers/hub-note", { note }).then((ok) => {
+        if (!ok) { saved = was; return; }
+        status(note
+          ? t("Agents are told this router is {name} — restart them to read it", { name: note })
+          : t("Agents on other computers are told this computer's name — restart them to read it"), "ok");
+      });
+    };
+    f.onkeydown = (e) => {
+      e.stopPropagation();
+      // an Enter that ends an input method's composition is the IME's
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key === "Enter") { e.preventDefault(); f.blur(); }
+      if (e.key === "Escape") { e.preventDefault(); f.value = saved; f.blur(); }
+    };
+    f.onblur = save;
+    row.append(glyph(GLYPH.doc), who, f);
+    return row;
   }
   // every server is behind the hub, magpie's own image server too, but one
   // the user keeps direct (#4382): each agent's own entry (inHub in
