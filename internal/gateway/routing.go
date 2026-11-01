@@ -837,6 +837,7 @@ func (s *Server) Unrest(key string) bool {
 	}
 	unsink(key)
 	s.trace.lifted()
+	s.lanes.signal() // a request waiting in a full lane may go to it now (waitMate)
 	return ok
 }
 
@@ -862,6 +863,7 @@ func (s *Server) UnrestAll(key string) int {
 	}
 	unsinkAll(key)
 	s.trace.lifted()
+	s.lanes.signal() // a request waiting in a full lane may go to it now (waitMate)
 	return n
 }
 
