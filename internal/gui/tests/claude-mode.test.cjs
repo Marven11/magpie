@@ -34,16 +34,16 @@ const codex = { id: "codex", name: "Codex", icon: "codex", models: [{ id: "gpt-6
 const RUNS = {
   tui: { tui: true, last: { tui: true, at: ago(3) } },
   off: { tui: false, why: "off", last: { tui: false, why: "off", at: ago(3) } },
-  wsl: { tui: false, why: "wsl-home", wsl: true },
+  os: { tui: false, why: "os" },
 };
 
 // each language's words, as the i18n table has them
 const W = {
-  en: { row: "Claude Code runs as", tui: "Interactive mode (TUI)", inUse: "In use", lastTui: "interactive mode", allP: "Every request runs as claude -p", wsl: "WSL" },
-  zh: { row: "Claude Code 运行方式", tui: "交互模式（TUI）", inUse: "使用中", lastTui: "交互模式", allP: "每个请求都以 claude -p 运行", wsl: "WSL" },
-  "zh-TW": { row: "Claude Code 執行方式", tui: "互動模式（TUI）", inUse: "使用中", lastTui: "互動模式", allP: "每個請求都以 claude -p 執行", wsl: "WSL" },
-  ja: { row: "Claude Code の実行方式", tui: "対話モード（TUI）", inUse: "使用中", lastTui: "対話モード", allP: "すべてのリクエストを claude -p で実行します", wsl: "WSL" },
-  de: { row: "Claude Code läuft als", tui: "Interaktiver Modus (TUI)", inUse: "In Verwendung", lastTui: "interaktiver Modus", allP: "Jede Anfrage läuft als claude -p", wsl: "WSL" },
+  en: { row: "Claude Code runs as", tui: "Interactive mode (TUI)", inUse: "In use", lastTui: "interactive mode", allP: "Every request runs as claude -p" },
+  zh: { row: "Claude Code 运行方式", tui: "交互模式（TUI）", inUse: "使用中", lastTui: "交互模式", allP: "每个请求都以 claude -p 运行" },
+  "zh-TW": { row: "Claude Code 執行方式", tui: "互動模式（TUI）", inUse: "使用中", lastTui: "互動模式", allP: "每個請求都以 claude -p 執行" },
+  ja: { row: "Claude Code の実行方式", tui: "対話モード（TUI）", inUse: "使用中", lastTui: "対話モード", allP: "すべてのリクエストを claude -p で実行します" },
+  de: { row: "Claude Code läuft als", tui: "Interaktiver Modus (TUI)", inUse: "In Verwendung", lastTui: "interaktiver Modus", allP: "Jede Anfrage läuft als claude -p" },
 };
 
 function serve(lang, run, switchOnly, reads) {
@@ -180,15 +180,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     test(`${engine} ${lang}: on where it can't run, Claude requests are said to fail, and why`, async (t) => {
       const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
       t.after(() => browser.close());
-      const { page, errors } = await openEditor(browser, lang, RUNS.wsl);
+      const { page, errors } = await openEditor(browser, lang, RUNS.os);
       const row = runRow(page);
       await row.waitFor();
       const tr = (k, v) => page.evaluate(([k, v]) => t(k, v), [k, v]);
       assert.equal(await row.locator(".cc-pick .opt").first().getAttribute("aria-pressed"), "true", "TUI is still the one chosen: never -p");
       const said = (await row.locator(".cc-said.bad").textContent()).trim();
-      assert.equal(said, await tr("Claude requests fail: {why}", { why: await tr("magpie couldn't find the home folder of Claude Code in WSL") }));
-      assert.match(said, new RegExp(w.wsl));
-      if (lang !== "en") assert(!/Claude requests fail|couldn't find/.test(said), said);
+      assert.equal(said, await tr("Claude requests fail: {why}", { why: await tr("this system can't run the interactive mode") }));
+      if (lang !== "en") assert(!/Claude requests fail|can't run/.test(said), said);
       assert.deepEqual(errors, []);
     });
   }

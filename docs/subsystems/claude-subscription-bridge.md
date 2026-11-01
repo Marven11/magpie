@@ -148,10 +148,18 @@ talks to it as it talks to `-p`: stream-json in and out. The helper:
   added to `WSLENV`, and an image's path is pasted as the distro reads
   it (`/mnt/c/…`, `shim.path`). The helper itself is the Windows
   magpie.exe, not the `/mnt/c/…` path the MCP helper is started at.
-  In the distro user's own folder the run is `-p` when Windows can't
-  stat `\\wsl$\<distro>\<home>` (`tuiWSLUnread`), since the helper
-  would wait for a transcript it can't see: a session with no 9P
-  redirector, as one over ssh, reads nothing there.
+  In the distro user's own folder, when Windows can't stat
+  `\\wsl$\<distro>\<home>` (`tuiWSLUnread`: a session with no 9P
+  redirector, as one over ssh, reads nothing there) or the probe found
+  no home, the transcript is read inside the distro (`WSL.Distro`, no
+  `Projects`; `wslread.go`): before Claude Code starts, a shell run
+  through `wsl.exe` notes how much of `$HOME/.claude/projects/*/<sid>.jsonl`
+  is there (a resumed session's earlier turns), says `ready`, then
+  `tail -F`s the rest, and the helper copies it to a file of its own
+  that it tails as it tails any transcript. Once Claude Code ends the
+  helper waits for the copy to stop growing (`settle`), then closes the
+  shell's stdin, which ends it. Until 11-01 both cases were refused
+  (`wslread`, `wsl-home`).
   Killing the gateway ended the distro's Claude Code with wsl.exe (tried
   on Windows 11 26200, magpie-desktop, Claude Code 2.1.289);
 - pastes each user message into the prompt (bracketed paste) and presses
@@ -278,8 +286,6 @@ Replies…\",\"type\":\"invalid_request_error" read as a model not served
 (`provider.ModelUnserved`), which made the 400 retryable again. That is
 when (`claudeTUI`, `claudePrint`):
 
-- it is Claude Code in WSL whose home the probe didn't find, or, in
-  the distro user's own folder, one Windows can't read (`wslread`);
 - the request has a JSON schema;
 
 A first message of any length is pasted: a conversation told whole to
@@ -330,7 +336,7 @@ reads `GET /api/claude/mode` (`gateway.ClaudeModeNow`) as the page
 opens, kept 30 seconds and dropped when the setting changes, not in
 `/api/providers`' polls. What decides it for every run on the machine is
 `claudeMachineWhy`, whose codes the page words: `off` (the setting),
-`wsl-home`, `missing` (no Claude Code found), `os` and `no-shim`. Beside
+`missing` (no Claude Code found), `os` and `no-shim`. Beside
 the switch: turned off, that every request runs as claude -p; on where
 the interactive mode can't run, that Claude requests fail, and why;
 otherwise the last request, when it was the interactive mode's. A

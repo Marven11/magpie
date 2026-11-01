@@ -714,31 +714,32 @@ func (c claudeCLI) file(path string) string {
 // transcripts read from Windows, through \\wsl$ for the distro's own
 // folder.
 func (c claudeCLI) tuiWSL(configDir string) string {
-	projects := filepath.Join(configDir, "projects")
+	w := claudetui.WSL{Args: c.wsl.Args(), Mount: c.wsl.Mount, Projects: filepath.Join(configDir, "projects")}
 	if configDir == "" {
-		projects = c.wsl.Windows(path.Join(c.wsl.Home, ".claude", "projects"))
+		w.Projects = c.wsl.Windows(path.Join(c.wsl.Home, ".claude", "projects"))
+		if c.tuiWSLUnread() {
+			// the helper reads the transcript inside the distro
+			w.Projects, w.Distro = "", c.wsl.Distro
+		}
 	}
-	b, _ := json.Marshal(claudetui.WSL{Args: c.wsl.Args(), Mount: c.wsl.Mount, Projects: projects})
+	b, _ := json.Marshal(w)
 	return string(b)
 }
 
 // wslStat is os.Stat; a var for tests.
 var wslStat = os.Stat
 
-// tuiWSLUnread is the folder of this Claude Code in WSL that Windows can't
-// read, where its transcripts are in config directory configDir: the
-// distro user's home through \\wsl$ for its own folder, which a session
-// with no 9P redirector (one over ssh) has none of. "" when it is read,
-// or is the account's, a Windows folder.
-func (c claudeCLI) tuiWSLUnread(configDir string) string {
-	if configDir != "" {
-		return ""
+// tuiWSLUnread is whether Windows can't read the transcripts of this
+// Claude Code in WSL in its own folder: the probe didn't find the distro
+// user's home, or Windows can't read it through \\wsl$, which a session
+// with no 9P redirector (one over ssh) has none of. An account's folder
+// is a Windows one.
+func (c claudeCLI) tuiWSLUnread() bool {
+	if c.wsl.Home == "" {
+		return true
 	}
-	home := c.wsl.Windows(c.wsl.Home)
-	if _, err := wslStat(home); err != nil {
-		return home
-	}
-	return ""
+	_, err := wslStat(c.wsl.Windows(c.wsl.Home))
+	return err != nil
 }
 
 // exe is magpie's own executable, as this Claude Code starts it.
@@ -998,15 +999,9 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 	// runs them interactively. A run it can't take is refused, never made
 	// -p: a refused request never ran, and isn't the last run
 	tui, code := claudeTUI(req, binary)
-	if tui && binary.wsl != nil {
-		// the helper would wait for a transcript it can't see
-		if dir := binary.tuiWSLUnread(configDir); dir != "" {
-			tui, code = false, "wslread"
-		}
-	}
 	if !tui && code != "off" && code != "no-shim" {
 		cleanup()
-		return nil, nil, &tuiRefusal{claudeTUIErr(claudeNotTUIWhy(req, binary, configDir))}
+		return nil, nil, &tuiRefusal{claudeTUIErr(claudeNotTUIWhy(req, binary))}
 	}
 	noteClaudeRun(code)
 	var cmd *exec.Cmd
@@ -1262,7 +1257,6 @@ func claudeMachineWhy(binary claudeCLI) (code, why string) {
 	}{
 		{!claudeTUIRuns, "no-shim", "no shim"},
 		{runtime.GOOS != "darwin" && runtime.GOOS != "linux" && runtime.GOOS != "windows", "os", runtime.GOOS},
-		{binary.wsl != nil && binary.wsl.Home == "", "wsl-home", "Claude Code in WSL, its home unknown"},
 		{binary.wsl == nil && binary.path == "", "missing", "no Claude Code path"},
 		{settings.Load().ClaudePrintMode, "off", "the interactive mode is turned off"},
 	} {
@@ -1415,14 +1409,9 @@ func claudeTUIOn() bool {
 }
 
 // claudeNotTUIWhy is why a run isn't the interactive mode.
-func claudeNotTUIWhy(req *Request, binary claudeCLI, configDir string) string {
+func claudeNotTUIWhy(req *Request, binary claudeCLI) string {
 	if why := claudePrintWhy(req, binary); why != "" {
 		return why
-	}
-	if binary.wsl != nil {
-		if dir := binary.tuiWSLUnread(configDir); dir != "" {
-			return "Windows can't read " + dir + ", where Claude Code in WSL writes its transcripts"
-		}
 	}
 	return "the interactive mode can't run here"
 }

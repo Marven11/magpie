@@ -26,8 +26,12 @@ type WSL struct {
 	// Mount is where the distro mounts Windows' drives ("/mnt/"): an
 	// image's path is pasted as Claude Code there reads it
 	Mount string `json:"mount"`
-	// Projects is Claude Code's projects folder, as Windows reads it
-	Projects string `json:"projects"`
+	// Projects is Claude Code's projects folder, as Windows reads it; ""
+	// with Distro set when Windows can't, or its home is unknown: the
+	// transcript is then read inside the distro (wslread.go)
+	Projects string `json:"projects,omitempty"`
+	// Distro is the distro, as wsl.exe -d names it
+	Distro string `json:"distro,omitempty"`
 }
 
 // MCPCommand is the hidden subcommand of magpie's tool server, the MCP

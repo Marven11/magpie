@@ -92,8 +92,10 @@ type shim struct {
 	nimages int
 
 	// wsl is a Claude Code in a WSL distro (WSLEnv); nil for this
-	// machine's
-	wsl *WSL
+	// machine's. wslr reads its transcript inside the distro, when
+	// Windows can't (wslread.go)
+	wsl  *WSL
+	wslr *wslRead
 
 	// tap copies the replies' streams (tap.go), nil with none; env is
 	// what Claude Code is given for it
@@ -119,7 +121,7 @@ func Run(args []string) error {
 	var wsl *WSL
 	if v := os.Getenv(WSLEnv); v != "" {
 		wsl = &WSL{}
-		if err := json.Unmarshal([]byte(v), wsl); err != nil || len(wsl.Args) == 0 || wsl.Projects == "" {
+		if err := json.Unmarshal([]byte(v), wsl); err != nil || len(wsl.Args) == 0 || wsl.Projects == "" && wsl.Distro == "" {
 			return fmt.Errorf("%s: %q", WSLEnv, v)
 		}
 		// wsl.exe's own arguments, then Claude Code's
@@ -144,8 +146,19 @@ func Run(args []string) error {
 		args = append(args, "--session-id", s.sid)
 	}
 	s.projects = filepath.Join(configDir(), "projects")
-	if wsl != nil {
+	if wsl != nil && wsl.Projects != "" {
 		s.projects = wsl.Projects
+	} else if wsl != nil {
+		dir, err := os.MkdirTemp("", "magpie-claude-wsl-")
+		if err != nil {
+			return fail(err.Error())
+		}
+		defer os.RemoveAll(dir)
+		if s.wslr, err = startWSLRead(wsl.Distro, s.sid, dir); err != nil {
+			return fail(err.Error())
+		}
+		defer s.wslr.stop()
+		s.projects = dir
 	}
 	// a resumed session's file has its earlier turns: only what is
 	// written after the start is read
@@ -858,6 +871,7 @@ func (s *shim) tail(from int64) {
 		select {
 		case <-s.exited:
 			// what it wrote last
+			s.wslr.settle()
 			if line, _ := rd.ReadBytes('\n'); len(line) > 0 {
 				t.row(append(part, line...))
 			}

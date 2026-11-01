@@ -12,7 +12,6 @@
 const CC_WHY = {
   off: "the interactive mode is off in Settings",
   os: "this system can't run the interactive mode",
-  "wsl-home": "magpie couldn't find the home folder of Claude Code in WSL",
   missing: "Claude Code isn't installed on this computer",
 };
 const ccWhy = (code) => t(CC_WHY[code] || CC_WHY.os);

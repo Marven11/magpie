@@ -86,11 +86,6 @@ func askClaudeTUI(ctx context.Context, binary claudeCLI, configDir, model string
 	if _, why := claudeMachineWhy(binary); why != "" {
 		return claudeTUIErr(why)
 	}
-	if binary.wsl != nil {
-		if dir := binary.tuiWSLUnread(configDir); dir != "" {
-			return claudeTUIErr("Windows can't read " + dir + ", where Claude Code in WSL writes its transcripts")
-		}
-	}
 	tmp, err := os.MkdirTemp("", "magpie-claude-")
 	if err != nil {
 		return err
