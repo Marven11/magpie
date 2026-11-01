@@ -323,8 +323,10 @@ type Weighed struct {
 	// own list of models leaving it out (#474)
 	Barred bool `json:"barred,omitempty"`
 	// Held: left out as the gateway key asking may not use its account or
-	// key (#905)
-	Held bool `json:"held,omitempty"`
+	// key (#905), or a routing group it was reached through is held to
+	// other accounts (Group.Accounts): HeldBy names that group
+	Held   bool   `json:"held,omitempty"`
+	HeldBy string `json:"heldBy,omitempty"`
 	// Capped: left out as held at the usage cap the user set on the
 	// account, this cap in percent; Used is then its fullest window's
 	// share, CapBack when the last window at or past it renews

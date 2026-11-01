@@ -406,6 +406,53 @@ recorded as a prediction failure (`noPrediction`).
   `TestUnroutedMaskingNotCutOff`, `TestUnroutedSlotWaitNotCutOff`,
   `TestUnroutedMostLeavesOutMasking`, `TestMaskingModelWaitNotCutOffAtMost`.
 
+## A route group held to chosen accounts
+
+A routing group may be held to some accounts of a provider (`Group.Accounts`,
+entries `<provider>/<stable id or KeyID fingerprint>` in a gateway key's
+form; duanckham on X: a personal and a company GPT account, one tool and one
+gateway, and a group's models must not spend the other's). The rule is the
+gateway key's (#905, `Identity.AllowsAccount`): a provider the group names is
+used only on the accounts it names, one it doesn't name on every account.
+
+- The asked group narrows the request's identity (`heldByGroup` in
+  [`key_models.go`](../../internal/gateway/key_models.go), by
+  `access.Identity.HeldToGroup`): the strict intersection with the key's own
+  list, `<provider>/\x00` (`heldToNone`) when the two share none of a
+  provider, and `Identity.Group` set to the group's name. Every gate that holds
+  a request to its key's accounts (`accountAllowed`, `allowedCandidates`,
+  `onKeys`, `allowedKey`) then holds it to the group's, on every route: chat,
+  responses and messages (`serve`), streamed or not, `count_tokens`
+  (`heldByGroupAt`), embeddings, images and video.
+- A group reached through another one, as a member or as a fallback, is held
+  by `planLevel`'s `hold` and `Member.Via` (`groupHeld`): its candidates on an
+  account it leaves out are Held rows with `Weighed.HeldBy`, which the Routing
+  page's trace tells ("not an account Work may use").
+- Fallback stays within the group's own entries: an allowed account that is
+  resting, out or refused falls to the next member, never to an account the
+  group leaves out. With every allowed account gone the request gets the
+  group's usual error; when a key and the group share no account it is 403
+  naming the group and the Routing page (`keyAccountsError`,
+  `groupsHeldError`), and nothing upstream is asked.
+- `provider.SaveGroup` resolves each entry (`cleanGroupAccounts`,
+  `provider.ResolveAccount`): an account named by the name it is shown by is
+  kept as its stable id, duplicates collapse, and a new unknown provider or
+  account is refused. One the group already held that is gone (signed out, a
+  key rotated) is kept, matching nothing, so the group stays held rather than
+  let off to every account. A shared or
+  imported group carries no accounts (`ShareGroup`, `ImportGroup`): they are
+  this computer's.
+- The group editor's Accounts section (`drawAccounts` in the routing plugin's
+  `client.js`) has a row for each member's provider with more than one account
+  (`/api/groups`' `accounts`, `groupAccounts` in
+  [`groups.go`](../../internal/gui/groups.go)): "Any of its accounts" until
+  some are ticked in its menu (`openPicker`, `multi`). Every save sends the
+  group's accounts, since a save replaces the group.
+
+`TestGroupAccountsHoldEveryRoute`, `TestGroupAccountsFallBackWithinTheGroup`,
+`TestGroupAccountsAndAKeysAccounts`, `TestGroupAccountsSaved`,
+`TestHeldToGroup`, `group-accounts.test.cjs`.
+
 ## Remote magpie APIs
 
 `GET /v1/magpie/trace` answers the routing this gateway has decided, for a
