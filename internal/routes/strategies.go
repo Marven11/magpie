@@ -29,6 +29,16 @@ func tier(share float64) int {
 	return 0
 }
 
+// seatTier is tier of the seat's share used, but 0 for one set to spend
+// its credits before another account (Seat.First): a window it uses up
+// doesn't send its requests elsewhere (jojonas_xyz on X).
+func seatTier(s Seat) int {
+	if s.First {
+		return 0
+	}
+	return tier(s.Used)
+}
+
 // byLeft is how a pool's wallets go by what they have left (Seat.Left),
 // as a comparison of two seats by their index: of seats whose balance is
 // in one provider's one unit (Seat.LeftIn), the one with more left first;
@@ -121,7 +131,7 @@ var Smart = Strategy{Order: func(_ string, seats []Seat) []int {
 	left := byLeft(seats, nil)
 	var fine, low, spent []int
 	for i, s := range seats {
-		switch tier(s.Used) {
+		switch seatTier(s) {
 		case 2:
 			spent = append(spent, i)
 		case 1:
@@ -224,7 +234,9 @@ func Drained(key string) {
 // it on the first not used up, in the listed order. Asking again with
 // nothing changed gives the same order, so a preview moves nothing.
 var Drain = Strategy{Exact: true, Order: func(pool string, seats []Seat) []int {
-	spent := func(s Seat) bool { return s.Spent || s.Known && s.Used >= provider.SpentShareOf(provider.Drain) }
+	spent := func(s Seat) bool {
+		return s.Spent || !s.First && s.Known && s.Used >= provider.SpentShareOf(provider.Drain)
+	}
 	drains.Lock()
 	defer drains.Unlock()
 	on := drains.m[pool]
@@ -311,7 +323,7 @@ var Pace = Strategy{ByUse: true, Order: func(_ string, seats []Seat) []int {
 	// band's top and part two alike behind it
 	var byPace []int
 	for i, s := range seats {
-		if tier(s.Used) == 0 && !s.Learns {
+		if seatTier(s) == 0 && !s.Learns {
 			byPace = append(byPace, i)
 		}
 	}
@@ -332,7 +344,7 @@ var Pace = Strategy{ByUse: true, Order: func(_ string, seats []Seat) []int {
 	idx := identity(len(seats))
 	sort.SliceStable(idx, func(a, b int) bool {
 		sa, sb := seats[idx[a]], seats[idx[b]]
-		if ta, tb := tier(sa.Used), tier(sb.Used); ta != tb {
+		if ta, tb := seatTier(sa), seatTier(sb); ta != tb {
 			return ta < tb
 		} else if ta == 2 && sa.Credits != sb.Credits {
 			return sa.Credits

@@ -13160,6 +13160,11 @@ function renderAccounts(a, p) {
     const capFor = (w) => windowCapOf(p, l.user, w);
     // how many requests it has out at once, and waiting (#892)
     if (p) pill(laneLimitPill(p, l.user, p.id + "@" + String(l.user).toLowerCase(), l.user));
+    // its credits, as on its Usage card (jojonas_xyz on X)
+    if (a.agent === "codex" && !sub?.plugin && !unusable(l)) {
+      const c = creditsRow({ provider: "codex", user: l.user }, "acc-credits");
+      if (c) tools.append(c);
+    }
     const held = capHeldOf(quota?.[l.user], capFor);
     if (held) line.append(capHeldNote(held, held.cap, several, direct));
     line.append(el("span", "grow"));
@@ -13209,7 +13214,7 @@ function renderAccounts(a, p) {
       const forget = forgetOf(true);
       if (l === back) {
         const again = el("span", "using", t("First again once it has room"));
-        again.title = t("magpie signs {agent} back in to this account once it has room again", { agent: a.agentName });
+        again.title = t("magpie signs {agent} back in to this account once it has room again", { agent: a.agentName }) + (a.agent === "codex" ? " " + t("To spend its credits first: ⋯ › Use credits › Before moving to another account.") : "");
         line.append(again);
       }
       if (kept) {
@@ -16064,16 +16069,9 @@ function byUsageOrder(list) {
   return list.map((q, i) => [q, i]).sort(([a, i], [b, j]) => rank(a) - rank(b) || i - j).map(([q]) => q);
 }
 
-// keyCards puts a key's balance on its plan's card (#1658, MizuIro-H): a
-// Command Code key is told both its plan's 5-hour and weekly windows and
-// its credits, and read apart they were two cards of one name, "Command
-// Code" twice. As a subscription's credits beside its windows (Command
-// Code's own), the balance is the plan card's row under the windows. The
-// same key: one of the plan's name, or with the plan of a provider's one
-// key unnamed, that provider's one balance. A balance that failed or
-// stands in for one that did is left its own card, which says so. The
-// balance's card id goes with it (balanceCard), for a menu bar cell
-// that opens it.
+// keyCards puts a key's balance on its plan's card, a row under the
+// windows, rather than a second card of one name (#1658); one that failed
+// keeps its own card. balanceCard is its id, for the menu bar.
 function keyCards(list) {
   list = sharedBalances(list);
   const plan = (q) => q.windows?.length && !q.balance && !q.error;
@@ -16091,15 +16089,9 @@ function keyCards(list) {
   return gone.size ? list.filter((q) => !gone.has(q)).map((q) => merged.get(q) || q) : list;
 }
 
-// packUsage lays the Usage page's cards out in columns, each as tall as
-// itself, the next going to the column that ends highest (#860). The order
-// reads left to right and stays the page's, for dragging, Alt+arrows and a
-// screen reader. As many 260px columns as fit, unless one fewer leaves much
-// less empty for a page not much taller; decided again when the cards
-// change or the width fits another count. A card growing only packs them
-// again, so what was clicked stays put as the scrollbar comes and goes.
-// Each column's last card reaches down to the tallest column's end, so the
-// bottoms line up (ikunbots on X).
+// packUsage lays the Usage cards in 260px columns, the next card to the
+// column that ends highest, the order still the page's (#860); each
+// column's last reaches the tallest's end (ikunbots on X).
 const USAGE_MIN = 260, USAGE_GAP = 7;
 let usagePacked = null, usagePackFrame = 0;
 function packUsage() {
@@ -17515,12 +17507,8 @@ function panelQuotaCard(q) {
         : i || w.members ? ringName(w) + " " + resetClock(at) : resetText(at);
     }).join(" · ")
     : ws.some((w) => w.used > 0) ? "" : t("Not used yet"));
-  // The first window's own pace as well, in the line already about its
-  // deadline: the thin line under it has no room for what it only hints at,
-  // and a card with no readings of that window has nothing to say (#2079).
-  // Only while that line is drawn (curves on), and only when the deadline
-  // the line names is that window's alone: after "Resets 14:26 · Weekly Oct 31"
-  // it would read as the week's.
+  // the first window's own pace too, while its line is drawn and the
+  // deadline named is that window's alone (#2079)
   const line = quotaRange !== "off" && begun.length === 1 && begun[0] === ws[0] && !ws[0].tiers ? quotaWindowLine(q, ws[0]) : null;
   const pace = line ? quotaEtaText(line, Date.now()) : "";
   if (pace) say.append(el("span", "pq-pace", " · " + pace));
@@ -17595,7 +17583,7 @@ function panelQuotaCard(q) {
       }
       if (credits) {
         if (policy) say.append(document.createTextNode(" · "));
-        say.append(el("b", "", t("Use credits:")), document.createTextNode(" " + t(creditsLast(q) ? "On, after everything else" : creditsOn(q) ? "On" : "Off")));
+        say.append(el("b", "", t("Use credits:")), document.createTextNode(" " + t(creditsLast(q) ? "On, after everything else" : creditsFirst(q) ? "On, before another account" : creditsOn(q) ? "On" : "Off")));
       }
       row.append(say);
       card.append(row);
@@ -17803,9 +17791,8 @@ function autoResetButton(q, c) {
   return b;
 }
 
-// Whether a Codex account spends its credits once a window is used up
-// (settings' codexNoCredits, on by default; off, routing holds it till the
-// window renews), and spends them last (codexCreditsLast, gokoshiki).
+// A Codex account's credits: spent (codexNoCredits, on by default), last
+// (codexCreditsLast, gokoshiki) or first (codexCreditsFirst, jojonas_xyz on X).
 function creditsKept(q) {
   return !!(q.user && q.provider === "codex");
 }
@@ -17814,6 +17801,9 @@ function creditsOn(q) {
 }
 function creditsLast(q) {
   return creditsOn(q) && (state.settings?.codexCreditsLast || []).includes(q.user.toLowerCase());
+}
+function creditsFirst(q) {
+  return creditsOn(q) && !creditsLast(q) && (state.settings?.codexCreditsFirst || []).includes(q.user.toLowerCase());
 }
 
 // creditsRow: that say on an account's card, its switches beside it.
@@ -17827,12 +17817,18 @@ function creditsRow(q, cls) {
   row.dataset.user = q.user;
   row.append(say, creditsButton(q));
   if (on) {
-    const last = creditsLast(q);
-    const line = el("div", "ar-case ar-credits-last" + (last ? " on" : ""));
-    const words = el("span", "ar-case-say", t("Only after every other account, key and fallback"));
-    words.title = t(last ? "On: past its windows, it goes after every other account, key and fallback, so its credits are spent last. Click to turn it off." : "Off: past its windows, it keeps its place and answers on its credits there.");
-    line.append(words, creditsSwitch(q, "credits-last", last, words.title, { on: true, last: !last }, t("Use credits") + " · " + words.textContent, last ? "{who} spends its credits when its windows run out" : "{who} spends its credits only after everything else"));
-    row.append(line);
+    // one of first and last at most
+    const first = creditsFirst(q), last = creditsLast(q);
+    const line = (cls, on, say, title, body, said) => {
+      const l = el("div", "ar-case " + cls + (on ? " on" : ""));
+      const words = el("span", "ar-case-say", t(say));
+      words.title = t(title);
+      l.append(words, creditsSwitch(q, cls.slice(3), on, words.title, body, t("Use credits") + " · " + words.textContent, on ? "{who} spends its credits when its windows run out" : said));
+      row.append(l);
+    };
+    line("ar-credits-first", first, "Before moving to another account", first ? "On: past its windows, it keeps its place and Codex's sign-in while it holds credits. Click to turn it off."
+      : "Off: nearly used up, it gives way to an account with room, Codex's sign-in too. Click to turn it on.", { on: true, first: !first }, "{who} spends its credits before moving to another account");
+    line("ar-credits-last", last, "Only after every other account, key and fallback", last ? "On: past its windows, it goes after every other account, key and fallback, so its credits are spent last. Click to turn it off." : "Off: past its windows, it answers on its credits when Routing comes to it.", { on: true, last: !last }, "{who} spends its credits only after everything else");
   }
   return row;
 }
@@ -17861,6 +17857,8 @@ function creditsSwitch(q, cls, on, title, body, label, said) {
       prefs = await writingPrefs(api("settings/codex-credits", { user: q.user, ...body }));
       state.settings = prefs;
       status(t(said, { who: q.user }), "ok");
+      // under an account's ⋯ on Providers, that list again
+      if (b.closest(".acc")) renderProviders();
       renderQuotas();
     } catch (err) {
       b.disabled = false;

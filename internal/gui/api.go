@@ -1875,9 +1875,10 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	// whether only after everything else (left as it is when not sent)
 	mux.HandleFunc("POST /api/settings/codex-credits", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
-			User string
-			On   bool
-			Last *bool
+			User  string
+			On    bool
+			Last  *bool
+			First *bool
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
@@ -1887,11 +1888,18 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			fail(rw, fmt.Errorf("which Codex account?"))
 			return
 		}
+		// on alone keeps first or last as it was; either said sets it,
+		// and one account has one of them
 		mode := provider.CreditsOff
 		if in.On {
 			mode = provider.CreditsOn
-			if (in.Last == nil && provider.CodexCreditsLast(in.User)) || (in.Last != nil && *in.Last) {
+			switch was := provider.CodexCreditsMode(in.User); {
+			case in.Last != nil && *in.Last:
 				mode = provider.CreditsLast
+			case in.First != nil && *in.First:
+				mode = provider.CreditsFirst
+			case in.Last == nil && in.First == nil && (was == provider.CreditsLast || was == provider.CreditsFirst):
+				mode = was
 			}
 		}
 		if err := provider.SetCodexCreditsMode(in.User, mode); err != nil {

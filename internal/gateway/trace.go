@@ -349,6 +349,10 @@ type Weighed struct {
 	// the user's settings.BusyLoad, so it was tried after every ready
 	// candidate that isn't (restLast)
 	Busy float64 `json:"busy,omitempty"`
+	// CreditsFirst: such an account (Credits) the user set to spend its
+	// credits before another account: all but used up, it keeps its
+	// place, new conversations and kept ones included
+	CreditsFirst bool `json:"creditsFirst,omitempty"`
 	// Rank: its place in its provider's own list of accounts or keys, the
 	// order the provider's page shows and a drag sets (#217); routing may
 	// weigh them in another
@@ -510,7 +514,7 @@ func weighed(c candidate, p provider.Provider, wg weighing, fallback bool, from 
 		w.Kind = "provider"
 	}
 	if l, ok := wg.lefts[c.allowanceKey()]; ok {
-		w.Known, w.Used, w.Renews, w.Pace, w.Credits = true, l.used, l.renews, l.pace, l.credits
+		w.Known, w.Used, w.Renews, w.Pace, w.Credits, w.CreditsFirst = true, l.used, l.renews, l.pace, l.credits, l.first
 		if !l.fullest.IsZero() {
 			ur := l.fullest
 			w.UsedRenews = &ur

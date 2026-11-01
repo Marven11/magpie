@@ -314,7 +314,8 @@ func Merge(body []byte, cur settings.Settings, web bool) (settings.Settings, err
 	in.CodexResetLead = cur.CodexResetLead         // and how early before one expires (codex-reset-lead)
 	// and which of them spend their credits, set there too
 	in.CodexNoCredits = cur.CodexNoCredits
-	in.CodexCreditsLast = cur.CodexCreditsLast // and which only after everything else
+	in.CodexCreditsLast = cur.CodexCreditsLast   // and which only after everything else
+	in.CodexCreditsFirst = cur.CodexCreditsFirst // and which before another account
 	// and each Codex account's own daily warm-up (codex-warm-at)
 	in.CodexWarmAtOf = cur.CodexWarmAtOf
 	// and the text size, which the keyboard changes too (text-size)
