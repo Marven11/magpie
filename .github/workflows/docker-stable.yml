@@ -23,7 +23,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/magpie
+  # not here: ghcr.io refuses a repository name with capitals in it, and
+  # github.repository_owner keeps the account's (Marven11, for a fork of
+  # that repo) — each job sets it lowercased, first thing (Lowercase the
+  # image name), where an expression cannot
   FEED: https://usemagpie.ai/api/latest?channel=stable
 
 jobs:
@@ -34,6 +37,12 @@ jobs:
       contents: read
       packages: write
     steps:
+      # ghcr.io/marven11/magpie, however the account is capitalised: an OCI
+      # repository name is lowercase only, and the error is a push that
+      # never starts ("invalid reference format")
+      - name: Lowercase the image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/magpie" >> "$GITHUB_ENV"
+
       - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v4
