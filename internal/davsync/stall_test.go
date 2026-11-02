@@ -364,7 +364,7 @@ func TestGitHubSlowBlobUploadIsNotCutShort(t *testing.T) {
 	// 200 KB of file: about 272 KB of base64 body, ~0.9 s at the line's
 	// 320 KB/s, well over the whole metadata limit.
 	data := bytes.Repeat([]byte("magpie usage "), (200<<10)/13)
-	if _, err := g.put(context.Background(), data, ""); err != nil {
+	if _, err := g.put(context.Background(), data, version{}); err != nil {
 		t.Fatalf("a slow but live blob POST: %v", err)
 	}
 }
@@ -376,7 +376,7 @@ func TestGitHubSmallPostKeepsTheLimit(t *testing.T) {
 	shortStall(t, 300*time.Millisecond, 300*time.Millisecond)
 	g := githubOn(t, &slowGitHub{hangTrees: true})
 	start := time.Now()
-	_, err := g.put(context.Background(), []byte("sealed fixture"), "")
+	_, err := g.put(context.Background(), []byte("sealed fixture"), version{})
 	took := time.Since(start)
 	var st *errStalled
 	if !errors.As(err, &st) || st.idle || took > 3*time.Second {
